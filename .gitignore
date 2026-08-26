@@ -24,3 +24,13 @@ dist-ssr
 *.sw?
 
 .env
+
+# Android
+.gradle/
+build/
+app/build/
+local.properties
+*.jks
+*.keystore
+*.apk
+captures/
