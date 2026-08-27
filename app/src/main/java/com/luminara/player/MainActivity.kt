@@ -71,6 +71,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+            var onboardingPermissionResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+            val onboardingPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                onboardingPermissionResult?.invoke(granted)
+                onboardingPermissionResult = null
+            }
             LuminaraTheme(ui.settings.theme) {
                 LuminaraApp(
                     viewModel = viewModel,
@@ -80,6 +85,10 @@ class MainActivity : ComponentActivity() {
                             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
                         }
                         permission.launch(permissions.toTypedArray())
+                    },
+                    requestOnboardingPermission = { requestedPermission, result ->
+                        onboardingPermissionResult = result
+                        onboardingPermission.launch(requestedPermission)
                     },
                     requestOverlay = {
                         startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))

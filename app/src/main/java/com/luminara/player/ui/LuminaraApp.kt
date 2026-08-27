@@ -44,6 +44,7 @@ import kotlin.math.roundToLong
 fun LuminaraApp(
     viewModel: MainViewModel,
     requestMediaPermission: () -> Unit,
+    requestOnboardingPermission: (String, (Boolean) -> Unit) -> Unit,
     requestOverlay: () -> Unit,
     chooseTree: () -> Unit,
     onFloatingChanged: (Boolean) -> Unit,
@@ -53,7 +54,7 @@ fun LuminaraApp(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
     if (!ui.settings.onboardingDone) {
-        OnboardingScreen(requestMediaPermission, requestOverlay) { viewModel.completeOnboarding() }
+        OnboardingScreen(requestOnboardingPermission, requestOverlay) { viewModel.completeOnboarding() }
         return
     }
     val nav = rememberNavController()
@@ -98,9 +99,17 @@ fun LuminaraApp(
     } }
 }
 
-@Composable private fun OnboardingScreen(requestMedia: () -> Unit, requestOverlay: () -> Unit, done: () -> Unit) {
-    var step by remember { mutableIntStateOf(0) }
+@Composable private fun OnboardingScreen(requestPermission: (String, (Boolean) -> Unit) -> Unit, requestOverlay: () -> Unit, done: () -> Unit) {
     val context = LocalContext.current
+    val initialStep = remember {
+        when {
+            !hasAudioPermission(context) -> 0
+            Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission(context) -> 1
+            else -> 2
+        }
+    }
+    var step by remember { mutableIntStateOf(initialStep) }
+    var permissionDenied by remember { mutableStateOf(false) }
     val items = listOf(
         Triple(Icons.Default.LibraryMusic, "음악 및 오디오", "휴대폰의 로컬 음악 라이브러리를 읽습니다."),
         Triple(Icons.Default.Notifications, "알림 및 미디어 컨트롤", "백그라운드 재생과 잠금화면 제어에 필요합니다."),
@@ -114,9 +123,19 @@ fun LuminaraApp(
             Spacer(Modifier.height(12.dp)); Text(items[step].third, color = Color(0xFFCEC3DD))
             Spacer(Modifier.height(32.dp))
             Button(onClick = {
-                when (step) { 0, 1 -> requestMedia(); 2 -> if (!Settings.canDrawOverlays(context)) requestOverlay() }
-                if (step < 2) step++ else done()
+                when (step) {
+                    0 -> requestPermission(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE) { granted ->
+                        permissionDenied = !granted
+                        if (granted) step++
+                    }
+                    1 -> if (Build.VERSION.SDK_INT >= 33) requestPermission(Manifest.permission.POST_NOTIFICATIONS) { granted ->
+                        permissionDenied = !granted
+                        if (granted) step++
+                    } else step++
+                    2 -> if (!Settings.canDrawOverlays(context)) requestOverlay() else done()
+                }
             }, Modifier.fillMaxWidth().height(54.dp)) { Text(if (step == 2) "설정하고 시작" else "권한 요청 후 다음") }
+            if (permissionDenied) Text("권한을 허용해야 이 단계를 진행할 수 있습니다.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
             if (step == 2) TextButton(onClick = done, Modifier.align(Alignment.CenterHorizontally)) { Text("나중에 설정") }
         }
     } }
@@ -286,3 +305,4 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 
 private fun formatTime(ms: Long): String { val sec = (ms / 1000).coerceAtLeast(0); return "%d:%02d".format(sec / 60, sec % 60) }
 private fun hasAudioPermission(context: android.content.Context): Boolean { val p = if(Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE; return androidx.core.content.ContextCompat.checkSelfPermission(context, p) == android.content.pm.PackageManager.PERMISSION_GRANTED }
+private fun hasNotificationPermission(context: android.content.Context): Boolean = Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
