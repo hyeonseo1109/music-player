@@ -40,8 +40,13 @@ interface CommunityApi {
     @POST("auth/v1/signup") suspend fun anonymous(@Header("apikey") key: String, @Body body: Map<String, String> = emptyMap()): AnonymousSession
     @POST("rest/v1/tracks") suspend fun upsertTrack(
         @Header("apikey") key: String, @Header("Authorization") auth: String,
-        @Header("Prefer") prefer: String = "resolution=merge-duplicates,return=representation",
+        @Header("Prefer") prefer: String = "resolution=ignore-duplicates,return=representation",
         @Query("on_conflict") conflict: String = "track_fingerprint", @Body body: TrackUpload,
+    ): List<TrackRow>
+    @GET("rest/v1/tracks") suspend fun findTrack(
+        @Header("apikey") key: String, @Header("Authorization") auth: String,
+        @Query("select") select: String = "id", @Query("track_fingerprint") fingerprint: String,
+        @Query("limit") limit: Int = 1,
     ): List<TrackRow>
     @POST("rest/v1/lyrics") suspend fun insertLyrics(
         @Header("apikey") key: String, @Header("Authorization") auth: String,
@@ -84,7 +89,8 @@ class CommunityLyricsRepository {
         val normalizedTitle = normalize(track.title)
         val normalizedArtist = normalize(track.artist)
         val fingerprint = "$normalizedTitle|$normalizedArtist"
-        val remoteTrack = api.upsertTrack(BuildConfig.SUPABASE_ANON_KEY, auth(user), body = TrackUpload(fingerprint, normalizedTitle, normalizedArtist, track.album, track.durationMs)).first()
+        val remoteTrack = api.upsertTrack(BuildConfig.SUPABASE_ANON_KEY, auth(user), body = TrackUpload(fingerprint, normalizedTitle, normalizedArtist, track.album, track.durationMs)).firstOrNull()
+            ?: api.findTrack(BuildConfig.SUPABASE_ANON_KEY, auth(user), fingerprint = "eq.$fingerprint").first()
         val lyric = api.insertLyrics(BuildConfig.SUPABASE_ANON_KEY, auth(user), body = LyricsUpload(remoteTrack.id, fingerprint, user.user.id, plainText, synced = lines.isNotEmpty())).first()
         if (lines.isNotEmpty()) api.insertLines(BuildConfig.SUPABASE_ANON_KEY, auth(user), body = lines.mapIndexed { index, line -> LineUpload(lyric.id, index, line.startTimeMs, line.text) })
         return lyric.id

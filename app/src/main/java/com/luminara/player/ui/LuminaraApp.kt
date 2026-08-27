@@ -36,6 +36,7 @@ import com.luminara.player.MainViewModel
 import com.luminara.player.data.*
 import com.luminara.player.library.MetadataUpdate
 import com.luminara.player.lyrics.SyncedLyricLine
+import com.luminara.player.lyrics.LrcCodec
 import com.luminara.player.playback.PlaybackState
 import kotlin.math.roundToLong
 
@@ -222,6 +223,22 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         }
         val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
         Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) }; IconButton({ track?.let { nav.navigate("lyricsSearch/${it.id}") } }) { Icon(Icons.Default.Lyrics, "가사 검색") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, null) } }
+        track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm) }
+    }
+}
+
+@Composable private fun NowPlayingLyricsPanel(trackId: String, positionMs: Long, vm: MainViewModel) {
+    var plain by remember(trackId) { mutableStateOf("") }
+    var synced by remember(trackId) { mutableStateOf<List<SyncedLyricLine>>(emptyList()) }
+    LaunchedEffect(trackId) { val value = vm.lyrics(trackId); plain = value.first; synced = value.second }
+    if (plain.isBlank()) return
+    val active = if (synced.isNotEmpty()) LrcCodec.activeIndex(synced, positionMs).coerceAtLeast(0) else -1
+    Surface(Modifier.fillMaxWidth().heightIn(max = 220.dp).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
+        if (active >= 0) Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            synced.getOrNull(active - 1)?.let { Text(it.text, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+            Text(synced[active].text, Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            synced.getOrNull(active + 1)?.let { Text(it.text, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+        } else Text(plain, Modifier.padding(16.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -246,6 +263,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         item { Section("라이브러리"); Choice("전체 음악 검색", ui.settings.scanMode == ScanMode.MEDIA_STORE) { vm.setScanMode(ScanMode.MEDIA_STORE) }; Choice("선택 폴더만 검색", ui.settings.scanMode == ScanMode.SELECTED_FOLDERS) { vm.setScanMode(ScanMode.SELECTED_FOLDERS) }; SettingLine(Icons.Default.FolderOpen, "음악 폴더 추가", "${ui.settings.treeUris.size}개 폴더 등록", chooseTree); SettingLine(Icons.Default.Refresh, "음악 라이브러리 다시 검색", ui.scanMessage.orEmpty(), vm::scan) }
         item { Section("플로팅 가사"); SwitchLine("다른 앱 위에 가사 표시", ui.settings.floatingLyrics) { if(it && !Settings.canDrawOverlays(context)) requestOverlay(); floatingChanged(it) }; Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) { Text("표시 줄 수", Modifier.weight(1f)); (1..3).forEach { FilterChip(it == ui.settings.floatingLines, { vm.setFloatingLines(it) }, { Text("${it}줄") }, Modifier.padding(start = 6.dp)) } } }
         item { Section("테마"); Row(Modifier.padding(horizontal = 16.dp)) { ThemeMode.entries.forEach { mode -> FilterChip(mode == ui.settings.theme, { vm.setTheme(mode) }, { Text(when(mode){ThemeMode.DARK->"다크";ThemeMode.LIGHT->"라이트";ThemeMode.SYSTEM->"시스템"}) }, Modifier.padding(4.dp)) } } }
+        item { Section("화면"); SwitchLine("앱을 보는 동안 화면 켜기", ui.settings.keepScreenOn, vm::setKeepScreenOn) }
         item { Section("권한"); SettingLine(Icons.Default.AudioFile, "음악 및 알림 권한", if(hasAudioPermission(context)) "허용됨" else "권한 필요", requestMedia); SettingLine(Icons.Default.PictureInPicture, "다른 앱 위에 표시", if(Settings.canDrawOverlays(context)) "허용됨" else "권한 필요", requestOverlay) }
         item { Section("데이터"); SettingLine(Icons.Default.FileUpload, "LRC·앱 데이터 백업/복원", "가사 화면의 LRC 가져오기/내보내기와 Android 자동 백업 지원") {} }
     }

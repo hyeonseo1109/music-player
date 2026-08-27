@@ -10,7 +10,9 @@ data class RestoredQueue(val entries: List<QueueEntry>, val currentIndex: Int, v
 object QueueRestorer {
     fun restore(snapshot: QueueSnapshot, availableTrackIds: Set<String>, currentTrackId: String?, positionMs: Long): RestoredQueue {
         val valid = snapshot.entries.filter { it.trackId in availableTrackIds }
-        val current = valid.indexOfFirst { it.trackId == currentTrackId }.let { if (it >= 0) it else 0 }
+        val savedCurrentInstance = snapshot.entries.getOrNull(snapshot.currentIndex)?.instanceId
+        val current = valid.indexOfFirst { it.instanceId == savedCurrentInstance }.takeIf { it >= 0 }
+            ?: valid.indexOfFirst { it.trackId == currentTrackId }.let { if (it >= 0) it else 0 }
         val oldById = snapshot.entries.withIndex().associate { it.value.instanceId to it.index }
         val newByOld = valid.withIndex().associate { oldById[it.value.instanceId] to it.index }
         val shuffle = snapshot.shuffleOrder.mapNotNull(newByOld::get).distinct()

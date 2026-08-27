@@ -15,7 +15,10 @@ interface AppDao {
 
     @Query("SELECT * FROM tracks WHERE id = :id") suspend fun track(id: String): TrackEntity?
     @Query("SELECT * FROM tracks WHERE id IN (:ids)") suspend fun tracks(ids: List<String>): List<TrackEntity>
+    @Query("SELECT * FROM tracks WHERE uri IN (:uris)") suspend fun tracksByUris(uris: List<String>): List<TrackEntity>
     @Query("SELECT uri FROM tracks") suspend fun allUris(): List<String>
+    @Query("SELECT id FROM tracks") suspend fun allTrackIds(): List<String>
+    @Query("SELECT id FROM tracks WHERE uri NOT IN (:validUris)") suspend fun trackIdsMissing(validUris: List<String>): List<String>
     @Upsert suspend fun upsertTracks(tracks: List<TrackEntity>)
     @Query("DELETE FROM tracks WHERE uri NOT IN (:validUris)") suspend fun deleteMissing(validUris: List<String>)
     @Query("DELETE FROM tracks") suspend fun deleteAllTracks()
@@ -31,6 +34,7 @@ interface AppDao {
     @Transaction suspend fun deleteTrackCompletely(trackId: String) {
         removeTrackFromAlbums(trackId); removeTrackFromSavedQueue(trackId); removeTrackLyrics(trackId); removeTrackHistory(trackId); deleteTrack(trackId)
     }
+    @Transaction suspend fun deleteTracksCompletely(trackIds: List<String>) { trackIds.forEach { deleteTrackCompletely(it) } }
     @Query("UPDATE tracks SET playCount=playCount+1, lastPlayedAt=:now WHERE id=:id") suspend fun countPlay(id: String, now: Long)
 
     @Query("SELECT * FROM user_albums ORDER BY sortOrder") fun observeAlbums(): Flow<List<UserAlbumEntity>>

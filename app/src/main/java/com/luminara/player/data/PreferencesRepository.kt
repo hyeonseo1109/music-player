@@ -56,6 +56,7 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setSort(value: String) = context.dataStore.edit { it[Keys.sort] = value }
     suspend fun setFloating(value: Boolean) = context.dataStore.edit { it[Keys.floating] = value }
     suspend fun setFloatingLines(value: Int) = context.dataStore.edit { it[Keys.lines] = value.coerceIn(1, 3) }
+    suspend fun setKeepScreenOn(value: Boolean) = context.dataStore.edit { it[Keys.keepOn] = value }
     suspend fun setOverlayPosition(x: Int, y: Int) = context.dataStore.edit { it[Keys.x] = x; it[Keys.y] = y }
     suspend fun addTree(uri: String) = context.dataStore.edit { it[Keys.trees] = (it[Keys.trees] ?: emptySet()) + uri }
 }

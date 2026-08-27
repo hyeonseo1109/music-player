@@ -4,8 +4,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -24,6 +26,7 @@ data class PlaybackState(
     val shuffle: Boolean = false,
 )
 
+@UnstableApi
 class PlayerConnection(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
@@ -71,13 +74,10 @@ class PlayerConnection(private val context: Context) {
     fun cycleRepeat() { controller?.repeatMode = ((controller?.repeatMode ?: 0) + 1) % 3 }
     fun append(track: com.luminara.player.data.TrackEntity) { controller?.addMediaItem(track.asMediaItem()) }
     fun playNext(track: com.luminara.player.data.TrackEntity) {
-        controller?.apply {
-            val at = (currentMediaItemIndex + 1).coerceIn(0, mediaItemCount)
-            val originalShuffle = shuffleModeEnabled
-            if (originalShuffle) shuffleModeEnabled = false
-            addMediaItem(at, track.asMediaItem())
-            if (originalShuffle) shuffleModeEnabled = true
-        }
+        controller?.sendCustomCommand(
+            PlaybackService.PLAY_NEXT_COMMAND,
+            Bundle().apply { putBundle(PlaybackService.ARG_MEDIA_ITEM, track.asMediaItem().toBundleIncludeLocalConfiguration()) },
+        )
     }
     fun move(from: Int, to: Int) { controller?.moveMediaItem(from, to) }
     fun removeTrack(trackId: String) {

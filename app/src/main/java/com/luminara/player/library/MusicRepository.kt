@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 
-data class ScanResult(val found: Int, val addedOrUpdated: Int, val removed: Int, val errors: Int)
+data class ScanResult(val found: Int, val addedOrUpdated: Int, val removed: Int, val errors: Int, val removedTrackIds: List<String> = emptyList())
 
 class MusicRepository(private val context: Context, private val dao: AppDao) {
     val tracks: Flow<List<TrackEntity>> = dao.observeTracks()
@@ -30,7 +30,9 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
         )
         val found = mutableListOf<TrackEntity>()
         var errors = 0
-        resolver.query(collection, projection, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, null)?.use { c ->
+        val cursor = resolver.query(collection, projection, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, null)
+            ?: error("MediaStore 음악 목록을 읽을 수 없습니다.")
+        cursor.use { c ->
             fun col(name: String) = c.getColumnIndexOrThrow(name)
             while (c.moveToNext()) runCatching {
                 val mediaId = c.getLong(col(MediaStore.Audio.Media._ID))
@@ -52,26 +54,35 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             }.onFailure { errors++ }
         }
         val before = dao.allUris().toSet()
-        dao.upsertTracks(found)
-        if (found.isEmpty()) dao.deleteAllTracks() else dao.deleteMissing(found.map { it.uri })
+        val merged = preserveAppState(found)
+        dao.upsertTracks(merged)
+        val removedIds = if (found.isEmpty()) dao.allTrackIds() else dao.trackIdsMissing(found.map { it.uri })
+        dao.deleteTracksCompletely(removedIds)
         val after = found.map { it.uri }.toSet()
-        ScanResult(found.size, (after - before).size, (before - after).size, errors)
+        ScanResult(found.size, (after - before).size, (before - after).size, errors, removedIds)
     }
 
     suspend fun scanTrees(treeUris: Set<String>): ScanResult = withContext(Dispatchers.IO) {
+        check(treeUris.isNotEmpty()) { "선택한 음악 폴더가 없습니다." }
         val items = mutableListOf<TrackEntity>()
         var errors = 0
+        var accessibleRoots = 0
         treeUris.forEach { raw ->
             val root = DocumentFile.fromTreeUri(context, Uri.parse(raw)) ?: return@forEach
+            if (!root.exists() || !root.canRead()) { errors++; return@forEach }
+            accessibleRoots++
             walk(root) { file ->
                 runCatching { readDocumentTrack(file) }.onSuccess { it?.let(items::add) }.onFailure { errors++ }
             }
         }
+        check(accessibleRoots > 0) { "등록된 음악 폴더 중 읽을 수 있는 폴더가 없습니다. 폴더 권한을 다시 확인하세요." }
         val before = dao.allUris().toSet()
-        dao.upsertTracks(items)
-        if (items.isEmpty()) dao.deleteAllTracks() else dao.deleteMissing(items.map { it.uri })
+        val merged = preserveAppState(items)
+        dao.upsertTracks(merged)
+        val removedIds = if (items.isEmpty()) dao.allTrackIds() else dao.trackIdsMissing(items.map { it.uri })
+        dao.deleteTracksCompletely(removedIds)
         val after = items.map { it.uri }.toSet()
-        ScanResult(items.size, (after - before).size, (before - after).size, errors)
+        ScanResult(items.size, (after - before).size, (before - after).size, errors, removedIds)
     }
 
     private fun walk(file: DocumentFile, onAudio: (DocumentFile) -> Unit) {
@@ -106,12 +117,29 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                     put(MediaStore.Audio.Media.TITLE, title); put(MediaStore.Audio.Media.ARTIST, artist); put(MediaStore.Audio.Media.ALBUM, album)
                     albumArtist?.let { put("album_artist", it) }
                 }
-                context.contentResolver.update(Uri.parse(track.uri), values, null, null)
+                val updated = context.contentResolver.update(Uri.parse(track.uri), values, null, null)
+                check(updated > 0) { "MediaStore가 메타데이터 변경을 반영하지 않았습니다." }
             } else throw UnsupportedOperationException("선택한 문서 공급자는 표준 태그 쓰기를 지원하지 않습니다.")
             dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
         }
     }
 
+    private suspend fun preserveAppState(scanned: List<TrackEntity>): List<TrackEntity> {
+        if (scanned.isEmpty()) return scanned
+        val existing = dao.tracksByUris(scanned.map { it.uri }).associateBy { it.uri }
+        return scanned.map { fresh -> existing[fresh.uri]?.let { old -> mergeScannedTrack(fresh, old) } ?: fresh }
+    }
+
     private fun String?.nullIfUnknown() = this?.takeUnless { it.isBlank() || it == "<unknown>" }
     private fun sha256(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 }
+
+internal fun mergeScannedTrack(fresh: TrackEntity, old: TrackEntity): TrackEntity = fresh.copy(
+    customArtworkUri = old.customArtworkUri,
+    playCount = old.playCount,
+    lastPlayedAt = old.lastPlayedAt,
+    isFavorite = old.isFavorite,
+    customLyricsId = old.customLyricsId,
+    createdAt = old.createdAt,
+    updatedAt = maxOf(old.updatedAt, fresh.updatedAt),
+)

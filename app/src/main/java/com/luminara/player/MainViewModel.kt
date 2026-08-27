@@ -82,6 +82,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (settings.scanMode == ScanMode.MEDIA_STORE) container.musicRepository.scanMediaStore()
             else container.musicRepository.scanTrees(settings.treeUris)
         }
+        result.getOrNull()?.removedTrackIds?.forEach(player::removeTrack)
         scanState.value = false to result.fold(
             { "${it.found}곡 검색 · ${it.addedOrUpdated}곡 반영 · ${it.removed}곡 제거" },
             { "검색 실패: ${it.localizedMessage}" },
@@ -94,6 +95,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addTree(uri: String) = viewModelScope.launch { container.preferences.addTree(uri); container.preferences.setScanMode(ScanMode.SELECTED_FOLDERS); scan() }
     fun setFloating(value: Boolean) = viewModelScope.launch { container.preferences.setFloating(value) }
     fun setFloatingLines(value: Int) = viewModelScope.launch { container.preferences.setFloatingLines(value) }
+    fun setKeepScreenOn(value: Boolean) = viewModelScope.launch { container.preferences.setKeepScreenOn(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
     fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?, done: (String) -> Unit) = viewModelScope.launch {
         done(runCatching { container.musicRepository.updateMetadata(track, title, artist, album, albumArtist); "저장했습니다" }.getOrElse { "저장 실패: ${it.localizedMessage}" })

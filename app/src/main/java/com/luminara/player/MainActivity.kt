@@ -40,6 +40,11 @@ class MainActivity : ComponentActivity() {
         viewModel.player.connect()
         setContent {
             val ui by viewModel.uiState.collectAsStateWithLifecycle()
+            DisposableEffect(ui.settings.keepScreenOn) {
+                if (ui.settings.keepScreenOn) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                onDispose { window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+            }
             var pendingDelete by remember { mutableStateOf<TrackEntity?>(null) }
             var pendingMetadata by remember { mutableStateOf<PendingMetadata?>(null) }
             val deleteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
                             deleteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
                         } else {
                             try {
-                                contentResolver.delete(Uri.parse(track.uri), null, null)
+                                check(contentResolver.delete(Uri.parse(track.uri), null, null) > 0) { "파일을 삭제하지 못했습니다." }
                                 viewModel.completeApprovedDelete(track.id); pendingDelete = null
                             } catch (security: RecoverableSecurityException) {
                                 deleteApproval.launch(IntentSenderRequest.Builder(security.userAction.actionIntent.intentSender).build())

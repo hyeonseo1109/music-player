@@ -2,6 +2,8 @@ package com.luminara.player
 
 import com.luminara.player.domain.*
 import com.luminara.player.playback.*
+import com.luminara.player.data.TrackEntity
+import com.luminara.player.library.mergeScannedTrack
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -19,9 +21,20 @@ class CoreLogicTest {
         assertTrue(9L !in dissolved.folders); assertEquals(setOf(1L,2L,3L), dissolved.albums.filter { it.folderId == null }.map { it.albumId }.toSet())
     }
     @Test fun `vote duplicate guard allows retry only after failure`() { val guard = VoteDuplicateGuard(); assertTrue(guard.begin("l")); assertFalse(guard.begin("l")); guard.failed("l"); assertTrue(guard.begin("l")) }
+    @Test fun `rescan refreshes media metadata but preserves user state`() {
+        fun track(title: String) = TrackEntity("1", 1, "content://song/1", null, "a.mp3", title, "artist", "album", null, 1_000, 1, 1, null)
+        val old = track("old").copy(isFavorite = true, playCount = 7, lastPlayedAt = 99, customArtworkUri = "file://art", createdAt = 12)
+        val merged = mergeScannedTrack(track("fresh"), old)
+        assertEquals("fresh", merged.title); assertTrue(merged.isFavorite); assertEquals(7, merged.playCount); assertEquals("file://art", merged.customArtworkUri); assertEquals(12, merged.createdAt)
+    }
     @Test fun `restore keeps queue order position shuffle and skips missing`() {
         val entries = listOf("A","B","C","D").map { QueueEntry(it,it) }
         val restored = QueueRestorer.restore(QueueSnapshot(entries,2,true,listOf(2,0,3,1)), setOf("A","C","D"), "C", 102_000)
         assertEquals(listOf("A","C","D"), restored.entries.map{it.trackId}); assertEquals(1, restored.currentIndex); assertEquals(102_000, restored.positionMs); assertEquals(listOf(1,0,2), restored.shuffleOrder)
+    }
+    @Test fun `restore keeps exact queue instance when track is duplicated`() {
+        val duplicate = listOf(QueueEntry("a1", "A"), QueueEntry("b", "B"), QueueEntry("a2", "A"))
+        val restored = QueueRestorer.restore(QueueSnapshot(duplicate, 2, false, emptyList()), setOf("A", "B"), "A", 4_000)
+        assertEquals(2, restored.currentIndex); assertEquals("a2", restored.entries[restored.currentIndex].instanceId)
     }
 }
