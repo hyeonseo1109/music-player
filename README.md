@@ -95,23 +95,23 @@ Release는 본인 keystore를 저장소 밖에서 만든 뒤 Android Studio **Ge
 
 ## 검증 결과 (2026-08-28)
 
-API 34 Pixel 7 AVD에서 격리된 `/sdcard/Music/LuminaraValidation` 테스트 폴더에 65초 길이의 MP3 3개, FLAC 1개, M4A 1개를 넣어 확인했습니다. 앨범 없음, 태그 없음, 한글 및 긴 영문 metadata를 포함했으며 사용자의 음원은 건드리지 않았습니다.
+API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스트 폴더의 65초 MP3 3개, FLAC 1개, M4A 1개로 확인했습니다. Galaxy S22 Ultra (`SM-S908N`, Android 16 / SDK 36 / One UI 8.0)에서는 사용자의 기존 2,616곡을 읽기·재생만으로 검증했으며 원본을 복사·삭제·수정하지 않았습니다.
 
 | 항목 | Pixel 7 AVD | Galaxy 실기기 |
 | --- | --- | --- |
-| MediaStore scan / 중복 없음 / 형식·한글 metadata | PASS (5곡) | 미검증 |
-| 행 터치 재생·Mini Player·Now Playing·MediaSession | PASS | 미검증 |
+| MediaStore scan / 중복 없음 / 형식·한글 metadata | PASS (5곡) | PASS (2,616곡) |
+| 행 터치 재생·Mini Player·Now Playing·MediaSession | PASS | PASS |
 | 30초 이상 재생 뒤 play count/history | PASS (30,652ms, count 1) | 미검증 |
-| force-stop 뒤 큐·현재 곡·약 58초 위치 paused 복원 | PASS | 미검증 |
+| force-stop 뒤 큐·현재 곡·약 58초 위치 paused 복원 | PASS | PASS (약 39초, paused) |
 | Queue 실제 drag 및 Room 순서 저장 | PASS | 미검증 |
 | Play Next (shuffle off/on) | PASS | 미검증 |
 | 오버레이 권한·서비스·`TYPE_APPLICATION_OVERLAY` 생성 | 부분 PASS (창/경계 확인, 렌더·드래그 수동 검증 불가) | 미검증 |
-| 알림/잠금화면 controls | 이전 AVD 검증 PASS, 이번 회차 재확인 불가 | 미검증 |
+| 알림/잠금화면 controls | 이전 AVD 검증 PASS, 이번 회차 재확인 불가 | 알림 PASS (제목·아티스트·이전·재생/일시정지·다음), 잠금화면 미검증 |
 | 유선·Bluetooth route / Samsung 절전 | 해당 하드웨어 없음 | 미검증 |
 | Photo Picker, MediaStore 승인 삭제·쓰기, artwork/LRCLIB | 미검증 | 미검증 |
 | Supabase Anonymous Auth E2E | URL/key/CLI 없음 | 미검증 |
 
-AVD는 종료되어 최종 빌드 후 재설치 확인은 다음 Galaxy 실기기 연결 시 수행해야 합니다. Android는 force-stop된 앱의 백그라운드 컴포넌트를 임의로 다시 시작하지 않으므로, 테스트 시 앱을 다시 열어 복원 상태를 확인합니다.
+Galaxy 실기기 재생 테스트 뒤 force-stop하여 같은 곡과 약 39초 위치가 자동 재생 없이 복원되는 것을 확인했습니다. Android는 force-stop된 앱의 백그라운드 컴포넌트를 임의로 다시 시작하지 않으므로, 테스트 시 앱을 다시 열어 복원 상태를 확인합니다.
 
 테스트 음원 투입 예:
 
