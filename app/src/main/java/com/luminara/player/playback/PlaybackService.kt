@@ -63,6 +63,7 @@ class PlaybackService : MediaSessionService() {
                 if (events.containsAny(
                         Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
                         Player.EVENT_REPEAT_MODE_CHANGED, Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
+                        Player.EVENT_POSITION_DISCONTINUITY,
                     )) scope.launch { persist() }
             }
         })

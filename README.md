@@ -103,7 +103,7 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | 행 터치 재생·Mini Player·Now Playing·MediaSession | PASS | PASS |
 | 30초 이상 재생 뒤 play count/history | PASS (30,652ms, count 1) | 미검증 |
 | force-stop 뒤 큐·현재 곡·약 58초 위치 paused 복원 | PASS | PASS (약 39초, paused) |
-| Queue 실제 drag 및 Room 순서 저장 | PASS | 미검증 |
+| Queue 실제 drag 및 Room 순서 저장 | PASS | PASS (Galaxy drag handle, UI·Media3·Room 순서 일치) |
 | Play Next (shuffle off/on) | PASS | 미검증 |
 | 오버레이 권한·서비스·`TYPE_APPLICATION_OVERLAY` 생성 | 부분 PASS (창/경계 확인, 렌더·드래그 수동 검증 불가) | 미검증 |
 | 알림/잠금화면 controls | 이전 AVD 검증 PASS, 이번 회차 재확인 불가 | 알림 PASS (제목·아티스트·이전·재생/일시정지·다음), 잠금화면 미검증 |
@@ -112,6 +112,8 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | Supabase Anonymous Auth E2E | URL/key/CLI 없음 | 미검증 |
 
 Galaxy 실기기 재생 테스트 뒤 force-stop하여 같은 곡과 약 39초 위치가 자동 재생 없이 복원되는 것을 확인했습니다. Android는 force-stop된 앱의 백그라운드 컴포넌트를 임의로 다시 시작하지 않으므로, 테스트 시 앱을 다시 열어 복원 상태를 확인합니다.
+
+추가 Galaxy E2E에서 5번째 곡 `Blink`를 2번째와 3번째 사이로 실제 long-press drag해 `A, B, Blink, C, D` 순서가 UI와 Media3 playlist, Room `playback_queue`에 모두 반영되는 것을 확인했습니다. 이후 Next는 `B` 다음 `Blink`를 재생했습니다. 이 과정에서 seek 직후 force-stop하면 위치가 저장되지 않는 문제를 발견해 position discontinuity에서 즉시 저장하도록 수정했고, `Blink`의 약 91.5초 위치가 paused 상태로 정확히 복원되는 것을 재검증했습니다.
 
 테스트 음원 투입 예:
 
