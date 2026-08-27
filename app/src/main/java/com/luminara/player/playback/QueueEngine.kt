@@ -15,8 +15,10 @@ class QueueEngine(seed: Int = 0) {
     fun move(snapshot: QueueSnapshot, from: Int, to: Int): QueueSnapshot {
         if (from !in snapshot.entries.indices || to !in snapshot.entries.indices) return snapshot
         val currentId = snapshot.entries.getOrNull(snapshot.currentIndex)?.instanceId
+        val shuffledIds = snapshot.shuffleOrder.mapNotNull { snapshot.entries.getOrNull(it)?.instanceId }
         val updated = snapshot.entries.toMutableList().apply { add(to, removeAt(from)) }
-        return snapshot.copy(entries = updated, currentIndex = updated.indexOfFirst { it.instanceId == currentId }.coerceAtLeast(0), shuffleOrder = emptyList())
+        val remappedShuffle = if (snapshot.shuffleEnabled) shuffledIds.mapNotNull { id -> updated.indexOfFirst { it.instanceId == id }.takeIf { it >= 0 } } else emptyList()
+        return snapshot.copy(entries = updated, currentIndex = updated.indexOfFirst { it.instanceId == currentId }.coerceAtLeast(0), shuffleOrder = remappedShuffle)
     }
     fun shuffled(snapshot: QueueSnapshot, enabled: Boolean): QueueSnapshot {
         if (!enabled) return snapshot.copy(shuffleEnabled = false, shuffleOrder = emptyList())

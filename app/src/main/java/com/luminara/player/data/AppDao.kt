@@ -22,23 +22,48 @@ interface AppDao {
     @Query("UPDATE tracks SET isFavorite = NOT isFavorite, updatedAt = :now WHERE id = :id") suspend fun toggleFavorite(id: String, now: Long)
     @Query("UPDATE tracks SET title=:title, artist=:artist, album=:album, albumArtist=:albumArtist, updatedAt=:now WHERE id=:id")
     suspend fun updateMetadata(id: String, title: String, artist: String, album: String, albumArtist: String?, now: Long)
+    @Query("UPDATE tracks SET customArtworkUri=:uri, updatedAt=:now WHERE id=:id") suspend fun updateCustomArtwork(id: String, uri: String?, now: Long)
+    @Query("DELETE FROM album_tracks WHERE trackId=:trackId") suspend fun removeTrackFromAlbums(trackId: String)
+    @Query("DELETE FROM playback_queue WHERE trackId=:trackId") suspend fun removeTrackFromSavedQueue(trackId: String)
+    @Query("DELETE FROM lyrics WHERE trackId=:trackId") suspend fun removeTrackLyrics(trackId: String)
+    @Query("DELETE FROM playback_history WHERE trackId=:trackId") suspend fun removeTrackHistory(trackId: String)
+    @Query("DELETE FROM tracks WHERE id=:trackId") suspend fun deleteTrack(trackId: String)
+    @Transaction suspend fun deleteTrackCompletely(trackId: String) {
+        removeTrackFromAlbums(trackId); removeTrackFromSavedQueue(trackId); removeTrackLyrics(trackId); removeTrackHistory(trackId); deleteTrack(trackId)
+    }
     @Query("UPDATE tracks SET playCount=playCount+1, lastPlayedAt=:now WHERE id=:id") suspend fun countPlay(id: String, now: Long)
 
     @Query("SELECT * FROM user_albums ORDER BY sortOrder") fun observeAlbums(): Flow<List<UserAlbumEntity>>
+    @Query("SELECT * FROM user_albums WHERE folderId IS NULL ORDER BY sortOrder") suspend fun rootAlbums(): List<UserAlbumEntity>
     @Insert suspend fun insertAlbum(album: UserAlbumEntity): Long
     @Query("UPDATE user_albums SET name=:name WHERE id=:id") suspend fun renameAlbum(id: Long, name: String)
     @Query("UPDATE user_albums SET folderId=:folderId, sortOrder=:sortOrder WHERE id=:id") suspend fun moveAlbum(id: Long, folderId: Long?, sortOrder: Int)
+    @Transaction suspend fun reorderAlbums(ids: List<Long>, folderId: Long?) { ids.forEachIndexed { index, id -> moveAlbum(id, folderId, index) } }
     @Query("DELETE FROM user_albums WHERE id=:id") suspend fun deleteAlbum(id: Long)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun addAlbumTrack(item: AlbumTrackEntity)
     @Query("SELECT tracks.* FROM tracks INNER JOIN album_tracks ON tracks.id=album_tracks.trackId WHERE album_tracks.albumId=:albumId ORDER BY album_tracks.sortOrder")
     fun observeAlbumTracks(albumId: Long): Flow<List<TrackEntity>>
     @Insert suspend fun insertFolder(folder: AlbumFolderEntity): Long
     @Query("SELECT * FROM album_folders ORDER BY sortOrder") fun observeFolders(): Flow<List<AlbumFolderEntity>>
+    @Query("UPDATE album_folders SET name=:name WHERE id=:id") suspend fun renameFolder(id: Long, name: String)
+    @Query("DELETE FROM album_folders WHERE id=:id") suspend fun deleteFolderRow(id: Long)
+    @Query("SELECT * FROM user_albums WHERE folderId=:folderId ORDER BY sortOrder") suspend fun albumsInFolder(folderId: Long): List<UserAlbumEntity>
+    @Transaction suspend fun createFolderWithAlbums(name: String, albumIds: List<Long>, sortOrder: Int): Long {
+        val folderId = insertFolder(AlbumFolderEntity(name = name, sortOrder = sortOrder))
+        albumIds.forEachIndexed { index, id -> moveAlbum(id, folderId, index) }
+        return folderId
+    }
+    @Transaction suspend fun dissolveFolder(folderId: Long, rootStartOrder: Int) {
+        albumsInFolder(folderId).forEachIndexed { index, album -> moveAlbum(album.id, null, rootStartOrder + index) }
+        deleteFolderRow(folderId)
+    }
 
     @Insert suspend fun insertLyrics(lyrics: LyricsEntity): Long
     @Insert suspend fun insertLyricLines(lines: List<LyricLineEntity>)
     @Query("SELECT * FROM lyrics WHERE trackId=:trackId ORDER BY updatedAt DESC LIMIT 1") fun observeLyrics(trackId: String): Flow<LyricsEntity?>
+    @Query("SELECT * FROM lyrics WHERE trackId=:trackId ORDER BY updatedAt DESC LIMIT 1") suspend fun lyrics(trackId: String): LyricsEntity?
     @Query("SELECT * FROM lyric_lines WHERE lyricsId=:lyricsId ORDER BY lineIndex") fun observeLyricLines(lyricsId: Long): Flow<List<LyricLineEntity>>
+    @Query("SELECT * FROM lyric_lines WHERE lyricsId=:lyricsId ORDER BY lineIndex") suspend fun lyricLines(lyricsId: Long): List<LyricLineEntity>
     @Query("DELETE FROM lyrics WHERE trackId=:trackId") suspend fun deleteLyrics(trackId: String)
 
     @Query("SELECT * FROM playback_session WHERE singletonId=1") suspend fun session(): PlaybackSessionEntity?

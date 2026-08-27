@@ -24,7 +24,8 @@ interface LrcLibApi {
 class LrcLibLyricsProvider : LyricsProvider {
     private val api = Retrofit.Builder().baseUrl("https://lrclib.net/").addConverterFactory(MoshiConverterFactory.create()).build().create(LrcLibApi::class.java)
     override suspend fun search(title: String, artist: String): List<LyricsSearchResult> = api.search(title, artist).map {
-        LyricsSearchResult(it.id.toString(), (it.syncedLyrics ?: it.plainLyrics).orEmpty().take(180), "LRCLIB", !it.syncedLyrics.isNullOrBlank(), 0, "")
+        val full = (it.plainLyrics ?: it.syncedLyrics?.let { lrc -> com.luminara.player.lyrics.LrcCodec.parse(lrc).joinToString("\n") { line -> line.text } }).orEmpty()
+        LyricsSearchResult(it.id.toString(), full.take(180), "LRCLIB", !it.syncedLyrics.isNullOrBlank(), 0, "", full, it.syncedLyrics)
     }
 }
 
@@ -36,6 +37,7 @@ interface ArtworkApi { @GET("search") suspend fun search(@Query("term") term: St
 class ArtworkProvider {
     private val api = Retrofit.Builder().baseUrl("https://itunes.apple.com/").addConverterFactory(MoshiConverterFactory.create()).build().create(ArtworkApi::class.java)
     suspend fun search(title: String, artist: String, album: String) = api.search(listOf(artist, title, album).filter { it.isNotBlank() }.joinToString(" ")).results
+    suspend fun searchQuery(query: String) = api.search(query).results
 }
 
 data class SharedLyricsDto(
@@ -62,7 +64,7 @@ class SupabaseLyricsProvider : LyricsProvider {
         if (!configured) return emptyList()
         val fingerprint = "eq.${normalize(title)}|${normalize(artist)}"
         return api.search(BuildConfig.SUPABASE_ANON_KEY, "Bearer ${BuildConfig.SUPABASE_ANON_KEY}", fingerprint = fingerprint).map {
-            LyricsSearchResult(it.id, it.plainText.take(180), it.source ?: "공유", it.isSynced, it.voteCount, it.updatedAt)
+            LyricsSearchResult(it.id, it.plainText.take(180), "Luminara · ${it.source ?: "공유"}", it.isSynced, it.voteCount, it.updatedAt, it.plainText, null)
         }
     }
     private fun normalize(value: String) = value.lowercase().replace(Regex("[^가-힣a-z0-9]"), "")

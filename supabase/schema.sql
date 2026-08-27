@@ -31,6 +31,8 @@ alter table lyric_lines enable row level security;
 alter table lyrics_votes enable row level security;
 alter table lyrics_reports enable row level security;
 create policy "read tracks" on tracks for select to anon, authenticated using (true);
+create policy "authenticated insert tracks" on tracks for insert to authenticated with check(true);
+create policy "authenticated update tracks" on tracks for update to authenticated using(true) with check(true);
 create policy "read lyrics" on lyrics for select to anon, authenticated using (true);
 create policy "read lines" on lyric_lines for select to anon, authenticated using (true);
 create policy "authenticated insert own lyrics" on lyrics for insert to authenticated with check(author_id = auth.uid());
@@ -38,3 +40,16 @@ create policy "author updates own lyrics" on lyrics for update to authenticated 
 create policy "authenticated insert lines for own lyrics" on lyric_lines for insert to authenticated with check(exists(select 1 from lyrics where lyrics.id=lyrics_id and lyrics.author_id=auth.uid()));
 create policy "one user one vote" on lyrics_votes for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
 create policy "authenticated report" on lyrics_reports for insert to authenticated with check(reporter_id=auth.uid());
+
+-- The (lyrics_id,user_id) primary key is the authoritative duplicate-vote guard.
+-- Keep the denormalized count consistent without trusting a client supplied value.
+create or replace function refresh_lyrics_vote_count() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update lyrics set vote_count = (select count(*) from lyrics_votes where lyrics_id = coalesce(new.lyrics_id, old.lyrics_id) and value = 1)
+  where id = coalesce(new.lyrics_id, old.lyrics_id);
+  return coalesce(new, old);
+end $$;
+drop trigger if exists lyrics_vote_count_changed on lyrics_votes;
+create trigger lyrics_vote_count_changed after insert or update or delete on lyrics_votes
+for each row execute function refresh_lyrics_vote_count();

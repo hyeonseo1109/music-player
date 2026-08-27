@@ -104,6 +104,7 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             if (track.mediaStoreId != null) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, title); put(MediaStore.Audio.Media.ARTIST, artist); put(MediaStore.Audio.Media.ALBUM, album)
+                    albumArtist?.let { put("album_artist", it) }
                 }
                 context.contentResolver.update(Uri.parse(track.uri), values, null, null)
             } else throw UnsupportedOperationException("선택한 문서 공급자는 표준 태그 쓰기를 지원하지 않습니다.")

@@ -80,6 +80,13 @@ class PlayerConnection(private val context: Context) {
         }
     }
     fun move(from: Int, to: Int) { controller?.moveMediaItem(from, to) }
+    fun removeTrack(trackId: String) {
+        controller?.apply {
+            (mediaItemCount - 1 downTo 0)
+                .filter { getMediaItemAt(it).mediaMetadata.extras?.getString(PlaybackService.KEY_TRACK_ID) == trackId }
+                .forEach(::removeMediaItem)
+        }
+    }
     fun clear() { controller?.clearMediaItems() }
 
     private fun publish(player: Player) {

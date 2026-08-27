@@ -34,6 +34,7 @@ import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
 import com.luminara.player.MainViewModel
 import com.luminara.player.data.*
+import com.luminara.player.library.MetadataUpdate
 import com.luminara.player.lyrics.SyncedLyricLine
 import com.luminara.player.playback.PlaybackState
 import kotlin.math.roundToLong
@@ -45,6 +46,8 @@ fun LuminaraApp(
     requestOverlay: () -> Unit,
     chooseTree: () -> Unit,
     onFloatingChanged: (Boolean) -> Unit,
+    requestDelete: (TrackEntity) -> Unit,
+    requestMetadataWrite: (TrackEntity, MetadataUpdate, (String) -> Unit) -> Unit,
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
@@ -68,13 +71,27 @@ fun LuminaraApp(
         },
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
-            composable("library") { LibraryScreen(ui, viewModel, nav) }
-            composable("albums") { AlbumsScreen(ui, viewModel) }
+            composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel) }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui.tracks) }
-            composable("queue") { QueueScreen(playback, viewModel, nav) }
-            composable("lyrics/{trackId}") { back -> LyricsEditor(back.arguments?.getString("trackId").orEmpty(), viewModel, nav) }
-            composable("sync/{trackId}") { back -> SyncEditor(back.arguments?.getString("trackId").orEmpty(), playback, viewModel, nav) }
+            composable("queue") { ReorderableQueueScreen(playback, viewModel) { nav.popBackStack() } }
+            composable("lyricsSearch/{trackId}") { back ->
+                val trackId = back.arguments?.getString("trackId").orEmpty()
+                ui.tracks.find { it.id == trackId }?.let { track ->
+                    LyricsSearchScreen(track, viewModel, { nav.popBackStack() }) { nav.navigate("lyrics/$trackId") }
+                }
+            }
+            composable("lyrics/{trackId}") { back ->
+                val trackId = back.arguments?.getString("trackId").orEmpty()
+                LyricsEditorScreen(trackId, viewModel, { nav.popBackStack() }) { nav.navigate("sync/$trackId") }
+            }
+            composable("sync/{trackId}") { back ->
+                LyricsSyncScreen(back.arguments?.getString("trackId").orEmpty(), playback, viewModel) { nav.popBackStack() }
+            }
+            composable("metadata/{trackId}") { back ->
+                MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite) { nav.popBackStack() }
+            }
         }
     }
 }
@@ -108,7 +125,7 @@ fun LuminaraApp(
     NavigationBarItem(selected = current == route, onClick = { nav.navigate(route) { launchSingleTop = true; popUpTo("library") } }, icon = { Icon(icon, null) }, label = { Text(label) })
 }
 
-@Composable private fun LibraryScreen(ui: com.luminara.player.MainUiState, vm: MainViewModel, nav: NavHostController) {
+@Composable private fun LibraryScreen(ui: com.luminara.player.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit) {
     var sortOpen by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<TrackEntity?>(null) }
     Column(Modifier.fillMaxSize()) {
@@ -128,7 +145,7 @@ fun LuminaraApp(
         if (!ui.scanning && ui.tracks.isEmpty()) EmptyLibrary(vm::scan)
         else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track -> MusicRow(track, { vm.player.play(track, ui.tracks) }, { selected = track }) } }
     }
-    selected?.let { TrackMenu(it, ui, vm, nav) { selected = null } }
+    selected?.let { TrackMenu(it, ui, vm, nav, requestDelete) { selected = null } }
 }
 
 private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; "PLAYED" -> "최근 들은 순"; "COUNT" -> "많이 들은 순"; else -> "곡명 순" }
@@ -151,20 +168,27 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     }
 }
 
-@Composable private fun TrackMenu(track: TrackEntity, ui: com.luminara.player.MainUiState, vm: MainViewModel, nav: NavHostController, close: () -> Unit) {
-    var metadata by remember { mutableStateOf(false) }
+@Composable private fun TrackMenu(track: TrackEntity, ui: com.luminara.player.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, close: () -> Unit) {
     var albumPicker by remember { mutableStateOf(false) }
+    var deleteConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.albumArtUri, 48) })
         MenuLine(Icons.Default.PlayArrow, "듣기") { vm.player.play(track, ui.tracks); close() }
         MenuLine(Icons.Default.SkipNext, "다음 곡으로 재생") { vm.player.playNext(track); close() }
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { albumPicker = true }
-        MenuLine(Icons.Default.Edit, "곡 정보 수정하기") { metadata = true }
-        MenuLine(Icons.Default.Lyrics, "가사 편집 / 싱크") { close(); nav.navigate("lyrics/${track.id}") }
+        MenuLine(Icons.Default.Edit, "곡 정보 수정하기") { close(); nav.navigate("metadata/${track.id}") }
+        MenuLine(Icons.Default.Lyrics, "가사 검색") { close(); nav.navigate("lyricsSearch/${track.id}") }
+        MenuLine(Icons.Default.EditNote, "가사 직접 입력") { close(); vm.stageLyrics(null); nav.navigate("lyrics/${track.id}") }
+        MenuLine(Icons.Default.DeleteOutline, "삭제") { deleteConfirm = true }
     } }
-    if (metadata) MetadataDialog(track, vm) { metadata = false; close() }
     if (albumPicker) AlertDialog(onDismissRequest = { albumPicker = false }, title = { Text("내 앨범에 추가") }, text = { Column { ui.albums.forEach { album -> TextButton({ vm.addToAlbum(album.id, track.id); albumPicker = false; close() }) { Text(album.name) } }; if (ui.albums.isEmpty()) Text("먼저 내 앨범 화면에서 앨범을 만드세요.") } }, confirmButton = {})
+    if (deleteConfirm) AlertDialog(
+        onDismissRequest = { deleteConfirm = false }, title = { Text("이 음악 파일을 기기에서 삭제하시겠습니까?") },
+        text = { Text("파일 자체가 삭제되며 다른 음악 앱에서도 사라질 수 있습니다.") },
+        confirmButton = { TextButton({ deleteConfirm = false; close(); requestDelete(track) }) { Text("삭제", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ deleteConfirm = false }) { Text("취소") } },
+    )
 }
 
 @Composable private fun MenuLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, click: () -> Unit) = ListItem({ Text(text) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(onClick = click))
@@ -196,7 +220,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             IconButton(vm.player::cycleRepeat) { Icon(if(state.repeatMode == 1) Icons.Default.Repeat else if(state.repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, null, tint = if(state.repeatMode != 0) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
         }
         val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
-        Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) }; IconButton({ track?.let { nav.navigate("lyrics/${it.id}") } }) { Icon(Icons.Default.Lyrics, null) }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, null) } }
+        Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) }; IconButton({ track?.let { nav.navigate("lyricsSearch/${it.id}") } }) { Icon(Icons.Default.Lyrics, "가사 검색") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, null) } }
     }
 }
 

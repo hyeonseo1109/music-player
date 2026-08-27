@@ -29,3 +29,24 @@ fun moveAlbum(items: List<AlbumLocation>, albumId: Long, folderId: Long?, newOrd
     without.add(insertion, moved.copy(folderId = folderId))
     return without.groupBy { it.folderId }.flatMap { (_, albums) -> albums.mapIndexed { i, a -> a.copy(order = i) } }
 }
+
+data class AlbumFolderState(val folders: Set<Long>, val albums: List<AlbumLocation>)
+object AlbumFolderEngine {
+    fun create(state: AlbumFolderState, folderId: Long, first: Long, second: Long): AlbumFolderState = state.copy(
+        folders = state.folders + folderId,
+        albums = moveAlbum(moveAlbum(state.albums, first, folderId, 0), second, folderId, 1),
+    )
+    fun dissolve(state: AlbumFolderState, folderId: Long): AlbumFolderState {
+        val rootSize = state.albums.count { it.folderId == null }
+        val members = state.albums.filter { it.folderId == folderId }.sortedBy { it.order }
+        val moved = members.foldIndexed(state.albums) { index, albums, member -> moveAlbum(albums, member.albumId, null, rootSize + index) }
+        return AlbumFolderState(state.folders - folderId, moved)
+    }
+}
+
+/** Fast local guard; the database primary key remains the cross-device authority. */
+class VoteDuplicateGuard {
+    private val pendingOrCompleted = mutableSetOf<String>()
+    fun begin(lyricsId: String): Boolean = pendingOrCompleted.add(lyricsId)
+    fun failed(lyricsId: String) { pendingOrCompleted.remove(lyricsId) }
+}

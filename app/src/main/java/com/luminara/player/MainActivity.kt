@@ -6,6 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.provider.MediaStore
+import android.app.Activity
+import android.app.RecoverableSecurityException
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -17,12 +21,15 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.luminara.player.floating.FloatingLyricsService
+import com.luminara.player.data.TrackEntity
+import com.luminara.player.library.MetadataUpdate
 import com.luminara.player.ui.LuminaraApp
 import com.luminara.player.ui.LuminaraTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private data class PendingMetadata(val track: TrackEntity, val update: MetadataUpdate, val done: (String) -> Unit)
     private val viewModel: MainViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +40,25 @@ class MainActivity : ComponentActivity() {
         viewModel.player.connect()
         setContent {
             val ui by viewModel.uiState.collectAsStateWithLifecycle()
+            var pendingDelete by remember { mutableStateOf<TrackEntity?>(null) }
+            var pendingMetadata by remember { mutableStateOf<PendingMetadata?>(null) }
+            val deleteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                val track = pendingDelete
+                if (result.resultCode == Activity.RESULT_OK && track != null) {
+                    if (Build.VERSION.SDK_INT == 29) runCatching { contentResolver.delete(Uri.parse(track.uri), null, null) }
+                    viewModel.completeApprovedDelete(track.id)
+                }
+                pendingDelete = null
+            }
+            val writeApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                val pending = pendingMetadata
+                if (pending != null) {
+                    if (result.resultCode == Activity.RESULT_OK) viewModel.updateMetadata(
+                        pending.track, pending.update.title, pending.update.artist, pending.update.album, pending.update.albumArtist, pending.done,
+                    ) else pending.done("사용자가 파일 변경 승인을 취소했습니다")
+                }
+                pendingMetadata = null
+            }
             val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
                 uri?.let {
                     contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -58,6 +84,31 @@ class MainActivity : ComponentActivity() {
                         viewModel.setFloating(enabled)
                         if (enabled && Settings.canDrawOverlays(this)) startService(Intent(this, FloatingLyricsService::class.java))
                         else stopService(Intent(this, FloatingLyricsService::class.java))
+                    },
+                    requestDelete = { track ->
+                        pendingDelete = track
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            val request = MediaStore.createDeleteRequest(contentResolver, listOf(Uri.parse(track.uri)))
+                            deleteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                        } else {
+                            try {
+                                contentResolver.delete(Uri.parse(track.uri), null, null)
+                                viewModel.completeApprovedDelete(track.id); pendingDelete = null
+                            } catch (security: RecoverableSecurityException) {
+                                deleteApproval.launch(IntentSenderRequest.Builder(security.userAction.actionIntent.intentSender).build())
+                            }
+                        }
+                    },
+                    requestMetadataWrite = { track, update, done ->
+                        if (track.mediaStoreId == null) {
+                            done("이 SAF 문서 공급자는 표준 음악 태그 쓰기를 지원하지 않습니다")
+                        } else if (Build.VERSION.SDK_INT >= 30) {
+                            pendingMetadata = PendingMetadata(track, update, done)
+                            val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
+                            writeApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                        } else {
+                            viewModel.updateMetadata(track, update.title, update.artist, update.album, update.albumArtist, done)
+                        }
                     },
                 )
             }

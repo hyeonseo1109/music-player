@@ -4,6 +4,13 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
+sealed interface LyricsSearchState {
+    data object Idle : LyricsSearchState
+    data object Loading : LyricsSearchState
+    data class Success(val results: List<LyricsSearchResult>) : LyricsSearchState
+    data class Error(val message: String) : LyricsSearchState
+}
+
 object LrcCodec {
     private val stamp = Regex("\\[(\\d{1,3}):(\\d{2})(?:[.:](\\d{1,3}))?]")
     fun parse(input: String): List<SyncedLyricLine> = input.lineSequence().flatMap { line ->
@@ -30,4 +37,13 @@ object LrcCodec {
 interface LyricsProvider {
     suspend fun search(title: String, artist: String): List<LyricsSearchResult>
 }
-data class LyricsSearchResult(val id: String, val preview: String, val source: String, val synced: Boolean, val votes: Int, val updatedAt: String)
+data class LyricsSearchResult(
+    val id: String,
+    val preview: String,
+    val source: String,
+    val synced: Boolean,
+    val votes: Int,
+    val updatedAt: String,
+    val plainText: String = preview,
+    val syncedText: String? = null,
+)
