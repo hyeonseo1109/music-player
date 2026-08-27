@@ -11,12 +11,15 @@ Luminara는 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재생
 - Audio Focus 및 audio-becoming-noisy에 의한 유선·USB·Bluetooth 출력 분리 시 일시정지
 - 전체 곡, 실시간/한글 초성 검색, 정렬 저장, MusicRow/곡 메뉴
 - Now Playing, seek/이전/재생/다음/repeat/shuffle, MediaController와 동기화되는 Mini Player
-- 실제 Media3 playlist 추가/이동/비우기/Play Next, Room 큐·현재 곡·위치·repeat·shuffle 저장/복원
+- drag handle로 순서를 바로 바꾸는 실제 Media3 playlist, Play Next, Room 큐·현재 곡·위치·repeat·shuffle 저장/복원
 - 삭제된 곡을 제외한 안전한 큐 복원, 재실행 시 자동 재생하지 않는 paused 복원
-- 좋아요, 사용자 앨범/앨범 폴더 데이터 모델과 생성/곡 추가
-- 로컬 일반 가사, 밀리초 싱크 가사, 재생 중 줄별 싱크 입력, LRC codec
+- 좋아요/많이 들은 곡 고정 앨범, 사용자 앨범 drag 정렬, 1-depth 폴더 생성·추가·root 이동·이름 변경·해체
+- 로컬 일반/싱크 가사, LRCLIB+Luminara 검색, 전체 미리보기 → local copy 편집 → 저장, 직접 입력, LRC
+- 싱크 줄 재지정, 이전/다음 줄, ±3초 seek, 전체 offset ±100/500/1000ms
 - 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 드래그/위치 저장, compact/control 모드
-- LRCLIB 가사, iTunes artwork, Supabase 공유 가사 provider와 RLS 스키마
+- Photo Picker → 1:1 이동/확대 crop → 미리보기/적용, iTunes artwork grid 검색의 loading/empty/error/retry
+- Supabase Anonymous Auth 가사 업로드/검색/싱크 줄 가져오기/추천/신고 UI와 RLS·중복 추천 constraint
+- Android 11+ MediaStore 파일 삭제/정보 쓰기 시스템 승인 Activity Result, 취소 시 무변경
 - 다크/라이트/시스템 테마와 DataStore 설정, Android 자동 백업 대상에 Room/DataStore 포함
 
 ## 구조
@@ -45,7 +48,7 @@ UI → ViewModel → Repository → Room/Android API 방향을 유지합니다. 
 
 Media3 playlist가 실제 재생 큐입니다. `playback_queue`와 singleton `playback_session`에는 instance ID, track ID, 순서, current track/index, 위치, repeat, shuffle, 시각을 저장합니다. 5초 주기와 timeline/mode 변경 때 저장하며 100ms마다 쓰지 않습니다. 복원 시 유효한 URI만 MediaItem으로 만들고 `setMediaItems(..., index, position)` 후 pause합니다.
 
-`QueueEngine`은 shuffle sequence 안에서 Play Next 항목을 현재 곡 바로 다음에 삽입하며 단위 테스트가 있습니다. Controller도 실제 playlist의 current index+1에 항목을 삽입합니다. Media3가 shuffle permutation을 내부 관리하므로 앱이 완전한 기존 permutation을 Player에 재주입하는 부분은 custom `ShuffleOrder`로 더 강화할 수 있습니다.
+Queue drag는 UI 배열만 바꾸지 않고 각 경계를 넘을 때 `MediaController.moveMediaItem`을 호출합니다. 서비스 timeline listener가 즉시 Room에 저장하며, Media3가 현재 MediaItem을 유지하므로 재생을 다시 시작하지 않습니다. `QueueEngine`의 테스트도 shuffle 순회 ID를 재매핑하고 Play Next+재정렬 후 현재 곡/위치 복원을 검증합니다.
 
 ### Audio Focus / 이어폰·Bluetooth 분리
 
@@ -66,11 +69,13 @@ SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_ANON_KEY
 
 운영 환경에서는 Supabase Anonymous Auth를 활성화해야 쓰기 RLS가 동작합니다. 키/keystore는 커밋하지 않습니다.
 
+공유는 음원을 전송하지 않고 normalized title/artist, album, duration, 가사/싱크 줄만 새 contribution으로 삽입합니다. 다른 사용자의 row를 수정하지 않습니다. `lyrics_votes(lyrics_id,user_id)` 기본키와 RLS가 중복 추천을 막고, 신고는 삭제 대신 reports row로 남습니다. 기존 Supabase 프로젝트는 업데이트된 `supabase/schema.sql`을 반영해야 합니다.
+
 ## Android 정책상 제약
 
 - 최신 Android는 임의의 잠금화면 UI를 허용하지 않습니다. 표준 MediaSession 잠금화면 카드에 제목/가수/커버/controls가 표시됩니다. 별도 가사 잠금화면은 보안을 우회하지 않고 overlay/알림을 사용합니다.
 - MP3/FLAC embedded tag의 범용 in-place 수정 API가 없습니다. 현재 편집은 공식 MediaStore update를 호출합니다. 소유하지 않은 파일은 시스템 승인이 필요하거나 provider가 거절할 수 있고, 실패 시 Room만 몰래 바꾸지 않습니다.
-- Android 11+ 삭제/쓰기 승인은 `createDeleteRequest`/`createWriteRequest` PendingIntent가 필요합니다. 삭제 UI와 이미지 crop/바이너리 태그 재작성은 Activity result 연결이 더 필요한 영역입니다.
+- Android 11+ 삭제/쓰기는 `createDeleteRequest`/`createWriteRequest` Activity Result로 승인 후에만 반영합니다. 현재 정보 편집은 MediaStore 표준 컬럼을 갱신하며 MP3/FLAC 바이너리 embedded tag를 직접 재작성하지는 않습니다. SAF/provider 미지원 시 Room만 바꾸지 않고 오류를 표시합니다.
 - 공개 API가 없는 사이트 HTML은 scraping하지 않고 LRCLIB/iTunes/설정 가능한 Supabase provider를 사용합니다.
 
 ## 빌드 / APK
@@ -120,10 +125,13 @@ adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:
 
 ## 자동 테스트
 
-`app/src/test`는 한글 초성/대소문자·공백 검색, queue reorder, Play Next, shuffle+Play Next, repeat, lyric lookup/offset/LRC round trip, play count threshold, album folder move, rescan diff, missing track queue restore, position과 shuffle sequence 복원을 검증합니다.
+`app/src/test`는 queue drag 재정렬/복원, Play Next+재정렬, shuffle 순회 보존, 앨범 정렬/폴더 생성·이동·해체, remote 가사 local copy, synced 줄 구조 변경, 추천 중복 guard 등을 검증합니다.
 
 ## 남은 제품화 작업
 
-현재 APK는 핵심 로컬 재생·스캔·백그라운드 세션·알림·큐 복원·앨범 데이터·가사 싱크·오버레이를 실제 Android API에 연결한 개발 빌드입니다. Play Store 수준에는 drag gesture queue/앨범 정렬, delete/write PendingIntent 결과 처리, 이미지 crop/선택 확인 UI, remote 가사/커버 결과 UI, sleep timer, 수동 JSON backup picker, Supabase anonymous 업로드/투표/신고 UI, instrumented UI tests가 더 필요합니다. 이 항목들은 동작하는 척하는 placeholder로 숨기지 않았습니다.
+- MP3/FLAC 파일의 범용 embedded tag 바이너리 재작성(현재는 공식 MediaStore metadata update)
+- sleep timer, 수동 JSON backup 파일 picker, 장시간/대규모 라이브러리 실기기 성능 튜닝
+- 폴토 픽커·MediaStore 승인·드래그를 실제 제스처로 돌리는 Compose instrumented UI test 확장
+- 실제 Supabase project/Anonymous Auth가 제공된 환경에서의 end-to-end 운영 검증과 moderation 관리 화면
 
 기존 웹 프로토타입은 `npm run dev`, Android 앱은 Gradle 명령으로 각각 실행합니다.
