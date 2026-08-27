@@ -58,11 +58,12 @@ fun LuminaraApp(
     val nav = rememberNavController()
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
     val showChrome = currentRoute == null || currentRoute in setOf("library", "albums", "settings")
-    Scaffold(
+    PurpleAtmosphere { Scaffold(
+        containerColor = Color.Transparent,
         bottomBar = {
             if (showChrome) Column {
                 if (playback.current != null) MiniPlayer(playback, { nav.navigate("player") }, viewModel.player::toggle, viewModel.player::next)
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                NavigationBar(containerColor = Color(0xE606030C), tonalElevation = 0.dp) {
                     NavItem(nav, "library", "전체 곡", Icons.Default.LibraryMusic)
                     NavItem(nav, "albums", "내 앨범", Icons.Default.Album)
                     NavItem(nav, "settings", "설정", Icons.Default.Settings)
@@ -93,7 +94,7 @@ fun LuminaraApp(
                 MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite) { nav.popBackStack() }
             }
         }
-    }
+    } }
 }
 
 @Composable private fun OnboardingScreen(requestMedia: () -> Unit, requestOverlay: () -> Unit, done: () -> Unit) {
@@ -104,7 +105,7 @@ fun LuminaraApp(
         Triple(Icons.Default.Notifications, "알림 및 미디어 컨트롤", "백그라운드 재생과 잠금화면 제어에 필요합니다."),
         Triple(Icons.Default.PictureInPicture, "다른 앱 위에 표시", "다른 앱을 사용하는 동안 싱크 가사를 띄웁니다."),
     )
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF08060D), Color(0xFF1C0E35)))).padding(28.dp)) {
+    PurpleAtmosphere { Box(Modifier.fillMaxSize().padding(28.dp)) {
         Column(Modifier.align(Alignment.Center)) {
             Icon(items[step].first, null, Modifier.size(72.dp), Color(0xFFB69CFF))
             Spacer(Modifier.height(28.dp)); Text("LUMINARA", style = MaterialTheme.typography.labelLarge, color = Color(0xFFB69CFF))
@@ -117,7 +118,7 @@ fun LuminaraApp(
             }, Modifier.fillMaxWidth().height(54.dp)) { Text(if (step == 2) "설정하고 시작" else "권한 요청 후 다음") }
             if (step == 2) TextButton(onClick = done, Modifier.align(Alignment.CenterHorizontally)) { Text("나중에 설정") }
         }
-    }
+    } }
 }
 
 @Composable private fun RowScope.NavItem(nav: NavHostController, route: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -163,7 +164,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 }
 
 @Composable private fun Artwork(uri: String?, size: Int) {
-    Box(Modifier.size(size.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceVariant))), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceVariant))).border(1.dp, Color(0x669B4DFF), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
         if (uri != null) AsyncImage(uri, null, Modifier.fillMaxSize()) else Icon(Icons.Default.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
     }
 }
@@ -200,7 +201,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 
 @Composable private fun MiniPlayer(state: PlaybackState, open: () -> Unit, toggle: () -> Unit, next: () -> Unit) {
     val item = state.current ?: return
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable(onClick = open)) { Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) { Artwork(item.mediaMetadata.artworkUri?.toString(), 46); Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1); Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, style = MaterialTheme.typography.bodySmall) }; IconButton(toggle) { Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null) }; IconButton(next) { Icon(Icons.Default.SkipNext, null) } } }
+    Surface(color = Color.Transparent, modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp).purpleGlass(18).clickable(onClick = open)) { Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) { Artwork(item.mediaMetadata.artworkUri?.toString(), 46); Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1); Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; FilledIconButton(toggle, Modifier.size(42.dp)) { Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null) }; IconButton(next) { Icon(Icons.Default.SkipNext, null) } } }
 }
 
 @Composable private fun NowPlayingScreen(state: PlaybackState, vm: MainViewModel, nav: NavHostController, tracks: List<TrackEntity>) {

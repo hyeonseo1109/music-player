@@ -119,7 +119,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
 }
 
 @Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+    Surface(modifier.fillMaxWidth().purpleGlass(18), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.DragHandle, "길게 눌러 이동", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(Icons.Default.Album, null, Modifier.padding(horizontal = 14.dp), tint = MaterialTheme.colorScheme.primary)
@@ -129,7 +129,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
 }
 
 @Composable private fun FolderCard(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, click: () -> Unit) {
-    Surface(Modifier.fillMaxWidth().clickable(onClick = click), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+    Surface(Modifier.fillMaxWidth().purpleGlass(20).clickable(onClick = click), shape = RoundedCornerShape(20.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Folder, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f).padding(start = 14.dp)) {

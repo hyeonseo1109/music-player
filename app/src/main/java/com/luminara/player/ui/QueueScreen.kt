@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -61,10 +62,11 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
                 val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, label = "queueElevation")
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = if (dragging) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
+                    color = Color.Transparent,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 2.dp)
+                        .purpleGlass(16)
                         .zIndex(if (dragging) 1f else 0f)
                         .shadow(elevation, RoundedCornerShape(14.dp))
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationY = if (dragging) dragOffset else 0f },

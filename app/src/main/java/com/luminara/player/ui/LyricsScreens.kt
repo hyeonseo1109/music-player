@@ -49,7 +49,7 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
                 is LyricsSearchState.Error -> LyricsError(value.message) { viewModel.searchLyrics(title, artist) }
                 is LyricsSearchState.Success -> if (value.results.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("가사 검색 결과가 없습니다"); OutlinedButton({ viewModel.searchLyrics(title, artist) }, Modifier.padding(top = 8.dp)) { Text("다시 시도") } } } else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(value.results, key = { "${it.source}:${it.id}" }) { result ->
-                        Surface(Modifier.fillMaxWidth().clickable { preview = result }, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable { preview = result }, shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
                             Column(Modifier.padding(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) { Text(result.source, Modifier.weight(1f), fontWeight = FontWeight.Bold); AssistChip({}, { Text(if (result.synced) "싱크 있음" else "Plain") }); if (result.votes > 0) Text("추천 ${result.votes}", Modifier.padding(start = 8.dp)) }
                                 Text(result.preview, maxLines = 4, style = MaterialTheme.typography.bodyMedium)
