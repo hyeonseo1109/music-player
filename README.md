@@ -143,12 +143,12 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | Play Next (shuffle OFF) | PASS | NOT VERIFIED |
 | Play Next (shuffle ON) | PASS | NOT VERIFIED |
 | Play Next 뒤 force-stop 복원 | PASS | NOT VERIFIED |
-| A-B 직접 구간 반복 | NOT VERIFIED | NOT VERIFIED |
-| A-B 이전 3초 반복 | NOT VERIFIED | NOT VERIFIED |
-| A-B 이전 5초 반복 | NOT VERIFIED | NOT VERIFIED |
-| A-B 이전 10초 반복 | NOT VERIFIED | NOT VERIFIED |
-| A-B background 유지 | NOT VERIFIED | NOT VERIFIED |
-| A-B track change 시 해제 | NOT VERIFIED | NOT VERIFIED |
+| A-B 직접 구간 반복 | NOT VERIFIED | PASS — `Creep`에서 A 0:52, B 0:56, 3회 이상 반복 확인 |
+| A-B 이전 3초 반복 | NOT VERIFIED | PASS — `Creep`에서 A 1:01, B 1:04, 3회 이상 반복 확인 |
+| A-B 이전 5초 반복 | NOT VERIFIED | PASS — `Creep`에서 A 0:59, B 1:04, 3회 이상 반복 확인 |
+| A-B 이전 10초 반복 | NOT VERIFIED | PASS — `Creep`에서 A 0:49, B 0:59, 3회 이상 반복 확인 |
+| A-B background 유지 | NOT VERIFIED | PASS — Home 이동 뒤에도 `Creep` A-B 재생 유지 확인 |
+| A-B track change 시 해제 | NOT VERIFIED | PASS — A-B 중 `Fendi 2` 직접 선택 후 새 곡에 범위 미적용 확인 |
 | A-B + synced lyrics | NOT VERIFIED | NOT VERIFIED |
 | LRC 가져오기 | PASS | PARTIAL — Android 파일 선택기 열림 확인, 파일 선택·미리보기·저장은 NOT VERIFIED |
 | 오버레이 권한·서비스·`TYPE_APPLICATION_OVERLAY` 생성 | PARTIAL | PARTIAL — 생성, Home 이동 뒤 표시, 가사 없음 문구 PASS; drag/outside touch/controls/위치 복원 NOT VERIFIED |
