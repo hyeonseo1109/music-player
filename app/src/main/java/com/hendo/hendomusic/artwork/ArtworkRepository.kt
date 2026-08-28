@@ -9,6 +9,7 @@ import com.hendo.hendomusic.network.ArtworkResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.net.URL
 import kotlin.math.min
 
@@ -56,12 +57,18 @@ class ArtworkRepository(private val context: Context, private val provider: Artw
 
     private fun decodeSampled(uri: Uri, maxSide: Int): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: error("이미지를 열 수 없습니다")
+        val boundsStream = openInputStream(uri) ?: error("이미지를 열 수 없습니다")
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) error("지원하지 않는 이미지 형식입니다")
         var sample = 1
         while (bounds.outWidth / sample > maxSide * 2 || bounds.outHeight / sample > maxSide * 2) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
-        return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        return openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
             ?: error("지원하지 않는 이미지 형식입니다")
+    }
+
+    private fun openInputStream(uri: Uri) = when (uri.scheme) {
+        "file" -> uri.path?.let(::File)?.let(::FileInputStream)
+        else -> context.contentResolver.openInputStream(uri)
     }
 }
