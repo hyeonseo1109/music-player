@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.luminara.player"
+    namespace = "com.hendo.hendomusic"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.luminara.player"
+        applicationId = "com.hendo.hendomusic"
         minSdk = 29
         targetSdk = 36
         versionCode = 1

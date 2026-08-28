@@ -1,5 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.Luminara" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.HendoMusic" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">#08060D</item>
