@@ -48,4 +48,6 @@ data class LyricsSearchResult(
     val syncedText: String? = null,
     val trackTitle: String? = null,
     val trackArtist: String? = null,
+    val album: String? = null,
+    val durationMs: Long? = null,
 )

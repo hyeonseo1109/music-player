@@ -53,6 +53,8 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
                         Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable { preview = result }, shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
                             Column(Modifier.padding(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) { Text(result.source, Modifier.weight(1f), fontWeight = FontWeight.Bold); AssistChip({}, { Text(if (result.synced) "싱크 있음" else "Plain") }); if (result.votes > 0) Text("추천 ${result.votes}", Modifier.padding(start = 8.dp)) }
+                                result.trackTitle?.let { title -> Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) }
+                                listOfNotNull(result.trackArtist, result.album, result.durationMs?.let(::formatDuration)).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), style = MaterialTheme.typography.labelMedium) }
                                 Text(result.preview, maxLines = 4, style = MaterialTheme.typography.bodyMedium)
                                 if (result.updatedAt.isNotBlank()) Text("업데이트 ${result.updatedAt.take(10)}", style = MaterialTheme.typography.labelSmall)
                             }
@@ -83,6 +85,8 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
         AlertDialog(onDismissRequest = viewModel::resetCommunityAction, title = { Text(if (community is CommunityActionState.Error) "처리 실패" else "완료") }, text = { Text(message) }, confirmButton = { TextButton(viewModel::resetCommunityAction) { Text("확인") } })
     }
 }
+
+private fun formatDuration(durationMs: Long): String = "%d:%02d".format(durationMs / 60_000, (durationMs / 1_000) % 60)
 
 @Composable
 fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () -> Unit, back: () -> Unit, openSync: () -> Unit) {

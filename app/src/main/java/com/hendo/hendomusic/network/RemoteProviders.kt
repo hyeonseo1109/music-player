@@ -10,16 +10,20 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Headers
 import retrofit2.http.Query
 
 data class LrcLibResult(
     val id: Long,
     val trackName: String?,
     val artistName: String?,
+    val albumName: String?,
+    val duration: Double?,
     val plainLyrics: String?,
     val syncedLyrics: String?,
 )
 interface LrcLibApi {
+    @Headers("User-Agent: HendoMusic/1.0 (Android)")
     @GET("api/search") suspend fun search(@Query("track_name") title: String, @Query("artist_name") artist: String): List<LrcLibResult>
 }
 
@@ -27,7 +31,12 @@ class LrcLibLyricsProvider : LyricsProvider {
     private val api = Retrofit.Builder().baseUrl("https://lrclib.net/").addConverterFactory(MoshiConverterFactory.create(moshi)).build().create(LrcLibApi::class.java)
     override suspend fun search(title: String, artist: String): List<LyricsSearchResult> = api.search(title, artist).map {
         val full = (it.plainLyrics ?: it.syncedLyrics?.let { lrc -> com.hendo.hendomusic.lyrics.LrcCodec.parse(lrc).joinToString("\n") { line -> line.text } }).orEmpty()
-        LyricsSearchResult(it.id.toString(), full.take(180), "LRCLIB", !it.syncedLyrics.isNullOrBlank(), 0, "", full, it.syncedLyrics, it.trackName, it.artistName)
+        LyricsSearchResult(
+            id = it.id.toString(), preview = full.take(180), source = "LRCLIB",
+            synced = !it.syncedLyrics.isNullOrBlank(), votes = 0, updatedAt = "",
+            plainText = full, syncedText = it.syncedLyrics, trackTitle = it.trackName,
+            trackArtist = it.artistName, album = it.albumName, durationMs = it.duration?.times(1_000)?.toLong(),
+        )
     }
 }
 

@@ -169,11 +169,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableLyricsSearch.value = LyricsSearchState.Loading
         mutableLyricsSearch.value = runCatching {
             val results = coroutineScope {
-                val localApi = async { runCatching { lrcLibProvider.search(title, artist) } }
+                val lrcLib = async { runCatching { lrcLibProvider.search(title, artist) } }
                 val community = async { runCatching { sharedLyricsProvider.search(title, artist) } }
-                val providers = listOf(localApi.await(), community.await())
-                if (providers.all { it.isFailure }) throw providers.first().exceptionOrNull() ?: error("가사 검색에 실패했습니다")
-                providers.flatMap { it.getOrDefault(emptyList()) }
+                val lrcResult = lrcLib.await()
+                val communityResult = community.await()
+                val lrcLyrics = lrcResult.getOrDefault(emptyList())
+                val communityLyrics = communityResult.getOrDefault(emptyList())
+                // A disabled or empty optional community provider must not hide a
+                // real LRCLIB request failure as a misleading empty-result state.
+                if (lrcResult.isFailure && communityLyrics.isEmpty()) {
+                    throw lrcResult.exceptionOrNull() ?: error("LRCLIB 가사 검색에 실패했습니다")
+                }
+                lrcLyrics + communityLyrics
             }
             LyricsSearchState.Success(results)
         }.getOrElse { LyricsSearchState.Error(it.localizedMessage ?: "가사 검색에 실패했습니다") }

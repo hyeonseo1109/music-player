@@ -19,6 +19,7 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - 싱크 줄 재지정, 이전/다음 줄, ±3초 seek, 전체 offset ±100/500/1000ms
 - 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
 - Photo Picker 또는 iTunes 검색 결과 → 1:1 이동/확대 crop → 미리보기/적용. 원격 다운로드의 `file://` 임시 이미지도 crop 저장 경로에서 지원하며, iTunes artwork grid는 loading/empty/error/retry를 제공
+- LRCLIB 수동 가사 검색은 `HendoMusic/1.0 (Android)` User-Agent로 Cloudflare 520을 피하고, 후보별 제목·아티스트·앨범·길이·싱크 여부와 전체 가사 미리보기를 제공
 - 곡 metadata 기반 iTunes/LRCLIB high-confidence 자동 enrichment. 앱 시작 소수 배치, 현재 재생 곡 우선, 재스캔 뒤 background 배치로 처리하며 전체 라이브러리를 한꺼번에 요청하지 않음
 - 앨범커버 표시 우선순위 `USER > EMBEDDED > AUTO_SEARCH > PLACEHOLDER`, 가사 우선순위 `USER > AUTO_SEARCH > NONE`
 - Photo Picker·인터넷 결과 직접 선택으로 저장한 커버와 직접 입력·수정·LRC 가져오기·검색 결과 직접 선택으로 저장한 가사는 자동 검색이 덮어쓰지 않음
@@ -157,9 +158,9 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | Artwork 인터넷 검색 | NOT VERIFIED | PASS — `Radiohead Creep 라디오헤드 creep` iTunes 검색 결과 21개, `Creep - EP` 미리보기·다운로드·1:1 crop·USER 적용 확인 |
 | Artwork 자동 enrichment | NOT VERIFIED | NOT VERIFIED |
 | Artwork USER override의 재스캔 유지 | NOT VERIFIED | PASS — 앱 재시작과 라이브러리 새로고침 뒤에도 USER 커버 유지 (embedded Pablo Honey보다 우선) |
-| Lyrics 인터넷 검색 | NOT VERIFIED | NOT VERIFIED |
+| Lyrics 인터넷 검색 | NOT VERIFIED | PASS — `Creep / Radiohead` LRCLIB 검색 결과 표시, 후보 preview·29줄 synced lyrics·USER_SEARCH 저장·Now Playing 표시 확인 |
 | Lyrics 자동 enrichment | NOT VERIFIED | NOT VERIFIED |
-| Lyrics USER override의 재스캔 유지 | NOT VERIFIED | NOT VERIFIED |
+| Lyrics USER override의 재스캔 유지 | NOT VERIFIED | PASS — 앱 force-stop/reopen 뒤 USER_SEARCH synced lyrics와 paused 복원 위치의 active line 유지 확인 |
 | Photo Picker | NOT VERIFIED | NOT VERIFIED |
 | MediaStore 승인 삭제·쓰기 | NOT VERIFIED | NOT VERIFIED |
 | Supabase Anonymous Auth E2E | ENVIRONMENT UNAVAILABLE | NOT VERIFIED |
@@ -167,6 +168,8 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 Galaxy 실기기 재생 테스트 뒤 force-stop하여 같은 곡과 약 39초 위치가 자동 재생 없이 복원되는 것을 확인했습니다. Android는 force-stop된 앱의 백그라운드 컴포넌트를 임의로 다시 시작하지 않으므로, 테스트 시 앱을 다시 열어 복원 상태를 확인합니다.
 
 추가 Galaxy E2E에서 `Creep — Radiohead`의 커버 검색을 열어 `Radiohead Creep 라디오헤드 creep`으로 iTunes 결과 21개를 확인하고, `Creep - EP` 결과를 다운로드·기본 1:1 crop·적용했습니다. 원격 임시 파일 URI의 crop decode 결함을 수정한 뒤 앱 재시작과 라이브러리 새로고침까지 수행했으며, 적용한 USER 커버가 원래 embedded Pablo Honey 커버보다 계속 우선하는 것을 확인했습니다. 원본 음원 파일은 변경하지 않았습니다.
+
+추가 Galaxy E2E에서 `Creep / Radiohead`의 LRCLIB 수동 검색은 기본 OkHttp User-Agent에 대한 HTTP 520을 재현한 뒤 `HendoMusic/1.0 (Android)` 식별 헤더로 해결했습니다. 후보에는 제목·아티스트·앨범·길이·싱크 여부가 표시됐고, 선택한 결과의 preview와 29줄 synced lyrics를 `USER_SEARCH`로 저장했습니다. 앱 force-stop/reopen 뒤 paused 2:32 위치에서 Now Playing active lyric이 표시되는 것을 확인했습니다.
 
 추가 Galaxy E2E에서 5번째 곡 `Blink`를 2번째와 3번째 사이로 실제 long-press drag해 `A, B, Blink, C, D` 순서가 UI와 Media3 playlist, Room `playback_queue`에 모두 반영되는 것을 확인했습니다. 이후 Next는 `B` 다음 `Blink`를 재생했습니다. 이 과정에서 seek 직후 force-stop하면 위치가 저장되지 않는 문제를 발견해 position discontinuity에서 즉시 저장하도록 수정했고, `Blink`의 약 91.5초 위치가 paused 상태로 정확히 복원되는 것을 재검증했습니다.
 
