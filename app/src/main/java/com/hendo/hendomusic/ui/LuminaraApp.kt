@@ -180,7 +180,12 @@ fun LuminaraApp(
 
 @Composable private fun LibraryScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit) {
     var sortOpen by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<TrackEntity?>(null) }
+    var menuTrack by remember { mutableStateOf<TrackEntity?>(null) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedTracks = ui.visibleTracks.filter { it.id in selectedIds }
+    fun toggleSelection(track: TrackEntity) {
+        selectedIds = if (track.id in selectedIds) selectedIds - track.id else selectedIds + track.id
+    }
     // The search results are debounced. Keep the IME's composition and cursor locally
     // instead of feeding the delayed value back into a Korean text field.
     var searchField by remember { mutableStateOf(TextFieldValue(ui.query, TextRange(ui.query.length))) }
@@ -194,17 +199,33 @@ fun LuminaraApp(
         }
         OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(18.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("${ui.visibleTracks.size}곡", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Box { TextButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, null); Text(sortLabel(ui.settings.sort)) }
-                DropdownMenu(sortOpen, { sortOpen = false }) { listOf("TITLE" to "곡명 순", "RECENT" to "최근 추가", "PLAYED" to "최근 들은 순", "COUNT" to "많이 들은 순").forEach { (k, v) -> DropdownMenuItem({ Text(v) }, { vm.setSort(k); sortOpen = false }) } }
+            if (selectedTracks.isNotEmpty()) {
+                Text("${selectedTracks.size}곡 선택됨", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { vm.play(selectedTracks.first(), selectedTracks) }) { Icon(Icons.Default.PlayArrow, null); Text("선택 재생") }
+                    IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Default.Close, "선택 해제") }
+                }
+            } else {
+                Text("${ui.visibleTracks.size}곡", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box { TextButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, null); Text(sortLabel(ui.settings.sort)) }
+                    DropdownMenu(sortOpen, { sortOpen = false }) { listOf("TITLE" to "곡명 순", "RECENT" to "최근 추가", "PLAYED" to "최근 들은 순", "COUNT" to "많이 들은 순").forEach { (k, v) -> DropdownMenuItem({ Text(v) }, { vm.setSort(k); sortOpen = false }) } }
+                }
             }
         }
         if (ui.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
         ui.scanMessage?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall) }
         if (!ui.scanning && ui.tracks.isEmpty()) EmptyLibrary(vm::scan)
-        else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track -> MusicRow(track, { vm.play(track, ui.visibleTracks) }, { selected = track }) } }
+        else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track ->
+            MusicRow(
+                track = track,
+                selected = track.id in selectedIds,
+                play = { if (selectedIds.isEmpty()) vm.play(track, ui.visibleTracks) else toggleSelection(track) },
+                select = { toggleSelection(track) },
+                menu = { menuTrack = track },
+            )
+        } }
     }
-    selected?.let { TrackMenu(it, ui, vm, nav, requestDelete) { selected = null } }
+    menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }) { menuTrack = null } }
 }
 
 private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; "PLAYED" -> "최근 들은 순"; "COUNT" -> "많이 들은 순"; else -> "곡명 순" }
@@ -213,9 +234,10 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.GraphicEq, null, Modifier.size(64.dp), MaterialTheme.colorScheme.primary); Text("음악이 아직 없습니다", style = MaterialTheme.typography.titleLarge); Text("권한을 허용한 뒤 라이브러리를 검색하세요."); Button(scan) { Text("음악 검색") } }
 }
 
-@Composable private fun MusicRow(track: TrackEntity, play: () -> Unit, menu: () -> Unit) {
+@Composable private fun MusicRow(track: TrackEntity, selected: Boolean, play: () -> Unit, select: () -> Unit, menu: () -> Unit) {
     val haptics = LocalHapticFeedback.current
-    Row(Modifier.fillMaxWidth().pointerInput(track.id) { detectTapGestures(onTap = { play() }, onLongPress = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); menu() }) }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .52f) else Color.Transparent).pointerInput(track.id, selected) { detectTapGestures(onTap = { play() }, onLongPress = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); select() }) }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (selected) Icon(Icons.Default.CheckCircle, "선택됨", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
         Artwork(track.displayArtworkUri(), 54)
         Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold); Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         IconButton(menu) { Icon(Icons.Default.MoreVert, "곡 메뉴") }
@@ -228,12 +250,12 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     }
 }
 
-@Composable private fun TrackMenu(track: TrackEntity, ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, close: () -> Unit) {
+@Composable private fun TrackMenu(track: TrackEntity, ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, close: () -> Unit) {
     var albumPicker by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.displayArtworkUri(), 48) })
-        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, ui.visibleTracks); close() }
+        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, playQueue); close() }
         MenuLine(Icons.Default.SkipNext, "다음 곡으로 재생") { vm.player.playNext(track); close() }
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { albumPicker = true }
