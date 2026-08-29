@@ -19,6 +19,7 @@ import com.hendo.hendomusic.network.CommunityActionState
 import com.hendo.hendomusic.network.CommunityLyricsRepository
 import com.hendo.hendomusic.domain.VoteDuplicateGuard
 import com.hendo.hendomusic.playback.PlayerConnection
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
@@ -240,6 +241,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val lyrics = dao.lyrics(id) ?: return "" to emptyList()
         return lyrics.plainText to dao.lyricLines(lyrics.id).map { SyncedLyricLine(it.id.toString(), it.startTimeMs, it.text) }
     }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeLyrics(id: String): Flow<Pair<String, List<SyncedLyricLine>>> =
+        dao.observeLyrics(id).flatMapLatest { lyrics ->
+            if (lyrics == null) flowOf("" to emptyList())
+            else dao.observeLyricLines(lyrics.id).map { lines ->
+                lyrics.plainText to lines.map { SyncedLyricLine(it.id.toString(), it.startTimeMs, it.text) }
+            }
+        }
 
     override fun onCleared() { player.disconnect(); super.onCleared() }
 }

@@ -274,8 +274,8 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 }
 
 @Composable private fun NowPlayingLyricsScreen(trackId: String, positionMs: Long, vm: MainViewModel, back: () -> Unit) {
-    var lyrics by remember(trackId) { mutableStateOf("" to emptyList<SyncedLyricLine>()) }
-    LaunchedEffect(trackId) { lyrics = vm.lyrics(trackId) }
+    val lyrics by remember(trackId) { vm.observeLyrics(trackId) }
+        .collectAsStateWithLifecycle(initialValue = "" to emptyList())
     Scaffold(topBar = { TopAppBar({ Text("가사") }, navigationIcon = { IconButton(back) { Icon(Icons.Default.ArrowBack, "뒤로") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (lyrics.first.isBlank()) "등록된 가사가 없습니다." else if (lyrics.second.isEmpty()) lyrics.first else lyrics.second.joinToString("\n") { if (it.startTimeMs <= positionMs) "♪ ${it.text}" else it.text }, style = MaterialTheme.typography.bodyLarge)
@@ -284,9 +284,10 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 }
 
 @Composable private fun NowPlayingLyricsPanel(trackId: String, positionMs: Long, vm: MainViewModel, expanded: Boolean = false) {
-    var plain by remember(trackId) { mutableStateOf("") }
-    var synced by remember(trackId) { mutableStateOf<List<SyncedLyricLine>>(emptyList()) }
-    LaunchedEffect(trackId) { val value = vm.lyrics(trackId); plain = value.first; synced = value.second }
+    val lyrics by remember(trackId) { vm.observeLyrics(trackId) }
+        .collectAsStateWithLifecycle(initialValue = "" to emptyList())
+    val plain = lyrics.first
+    val synced = lyrics.second
     if (plain.isBlank()) {
         Surface(Modifier.fillMaxWidth().padding(top = 12.dp).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
             Text("가사가 등록되지 않았습니다.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)

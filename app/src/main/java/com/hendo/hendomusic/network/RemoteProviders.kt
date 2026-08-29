@@ -1,12 +1,15 @@
 package com.hendo.hendomusic.network
 
 import com.hendo.hendomusic.BuildConfig
+import android.util.Log
 import com.hendo.hendomusic.lyrics.LyricsProvider
 import com.hendo.hendomusic.lyrics.LyricsSearchResult
 import com.squareup.moshi.Json
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.Retrofit
+import retrofit2.HttpException
+import retrofit2.Response
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -24,12 +27,16 @@ data class LrcLibResult(
 )
 interface LrcLibApi {
     @Headers("User-Agent: HendoMusic/1.0 (Android)")
-    @GET("api/search") suspend fun search(@Query("track_name") title: String, @Query("artist_name") artist: String): List<LrcLibResult>
+    @GET("api/search") suspend fun search(@Query("track_name") title: String, @Query("artist_name") artist: String): Response<List<LrcLibResult>>
 }
 
 class LrcLibLyricsProvider : LyricsProvider {
     private val api = Retrofit.Builder().baseUrl("https://lrclib.net/").addConverterFactory(MoshiConverterFactory.create(moshi)).build().create(LrcLibApi::class.java)
-    override suspend fun search(title: String, artist: String): List<LyricsSearchResult> = api.search(title, artist).map {
+    override suspend fun search(title: String, artist: String): List<LyricsSearchResult> {
+        val response = api.search(title, artist)
+        Log.d("LrcLib", "search title=$title artist=$artist http=${response.code()}")
+        if (!response.isSuccessful) throw HttpException(response)
+        return response.body().orEmpty().map {
         val full = (it.plainLyrics ?: it.syncedLyrics?.let { lrc -> com.hendo.hendomusic.lyrics.LrcCodec.parse(lrc).joinToString("\n") { line -> line.text } }).orEmpty()
         LyricsSearchResult(
             id = it.id.toString(), preview = full.take(180), source = "LRCLIB",
@@ -37,6 +44,7 @@ class LrcLibLyricsProvider : LyricsProvider {
             plainText = full, syncedText = it.syncedLyrics, trackTitle = it.trackName,
             trackArtist = it.artistName, album = it.albumName, durationMs = it.duration?.times(1_000)?.toLong(),
         )
+        }
     }
 }
 

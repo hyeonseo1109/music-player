@@ -24,6 +24,8 @@ class MetadataPriorityTest {
     @Test fun `auto confidence requires artist and matching title or album`() {
         assertTrue(MetadataConfidence.artworkHigh("Song", "Artist", "Album", "Song", "Artist", "Album"))
         assertFalse(MetadataConfidence.artworkHigh("Song", "Artist", "Album", "Song", "Other", "Album"))
-        assertFalse(MetadataConfidence.lyricsHigh("Song", "Artist", "Song", "Other"))
+        assertTrue(MetadataConfidence.lyricsHigh("Song", "Artist", 200_000, "Song", "Artist", 204_000))
+        assertFalse(MetadataConfidence.lyricsHigh("Song", "Artist", 200_000, "Song", "Other", 200_000))
+        assertFalse(MetadataConfidence.lyricsHigh("Song", "Artist", 200_000, "Song", "Artist", 220_000))
     }
 }

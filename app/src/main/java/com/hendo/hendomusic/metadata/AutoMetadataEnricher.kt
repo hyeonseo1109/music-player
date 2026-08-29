@@ -1,5 +1,6 @@
 package com.hendo.hendomusic.metadata
 
+import android.util.Log
 import com.hendo.hendomusic.data.AppDao
 import com.hendo.hendomusic.data.ArtworkSource
 import com.hendo.hendomusic.data.LyricLineEntity
@@ -53,13 +54,26 @@ class AutoMetadataEnricher(
     }
 
     private suspend fun enrichLyrics(track: TrackEntity) {
-        val candidate = lyrics.search(track.title, track.artist)
-            .firstOrNull { it.plainText.isNotBlank() && MetadataConfidence.lyricsHigh(track.title, track.artist, it.trackTitle, it.trackArtist) }
-            ?: return
+        Log.d("AutoLyrics", "start track=${track.id} title=${track.title} artist=${track.artist} durationMs=${track.durationMs}")
+        val candidates = lyrics.search(track.title, track.artist)
+        Log.d("AutoLyrics", "candidates track=${track.id} count=${candidates.size}")
+        val candidate = candidates
+            .firstOrNull {
+                it.plainText.isNotBlank() && MetadataConfidence.lyricsHigh(
+                    track.title, track.artist, track.durationMs,
+                    it.trackTitle, it.trackArtist, it.durationMs,
+                )
+            }
+            ?: run {
+                Log.d("AutoLyrics", "no eligible candidate track=${track.id}")
+                return
+            }
+        Log.d("AutoLyrics", "selected track=${track.id} title=${candidate.trackTitle} artist=${candidate.trackArtist} remoteDurationMs=${candidate.durationMs} durationDeltaMs=${candidate.durationMs?.let { kotlin.math.abs(track.durationMs - it) }}")
         val lines = candidate.syncedText?.let(LrcCodec::parse).orEmpty()
-        dao.insertAutoLyricsIfMissing(
+        val saved = dao.insertAutoLyricsIfMissing(
             LyricsEntity(trackId = track.id, source = LyricsSource.AUTO_LRCLIB.name, plainText = candidate.plainText),
             lines.mapIndexed { index, line -> LyricLineEntity(lyricsId = 0, lineIndex = index, startTimeMs = line.startTimeMs, text = line.text) },
         )
+        Log.d("AutoLyrics", "save track=${track.id} source=${LyricsSource.AUTO_LRCLIB.name} saved=$saved lines=${lines.size}")
     }
 }
