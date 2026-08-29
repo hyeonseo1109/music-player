@@ -159,33 +159,23 @@ class PlaybackService : MediaSessionService() {
         player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(shifted.toIntArray(), System.nanoTime()))
     }
 
-    /** Reorder existing items in-place, so toggling shuffle never re-prepares the current source. */
+    /** Change Media3's shuffle traversal atomically; never loop thousands of main-thread moves. */
     private fun toggleQueueShuffle() {
         val current = player.currentMediaItem ?: run {
             player.shuffleModeEnabled = !player.shuffleModeEnabled
             return
         }
-        val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
         val shuffled = !player.shuffleModeEnabled
-        val ordered = if (shuffled) {
-            items.shuffled().let { random ->
-                // Do not interrupt the current song while the surrounding queue is randomized.
-                listOf(current) + random.filterNot { it.mediaId == current.mediaId }
-            }
+        val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+        val order = if (shuffled) {
+            // Explicit current-first traversal guarantees Next starts with a random other song
+            // while neither the current source nor the 2,000+ item timeline is replaced.
+            val rest = (0 until player.mediaItemCount).filter { it != currentIndex }.shuffled()
+            intArrayOf(currentIndex, *rest.toIntArray())
         } else {
-            items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.mediaMetadata.title?.toString().orEmpty() })
+            IntArray(player.mediaItemCount) { it }
         }
-        // moveMediaItem keeps the current MediaSource alive. setMediaItems(...) used to replace
-        // it, briefly interrupting audio on every shuffle toggle.
-        ordered.forEachIndexed { targetIndex, target ->
-            val fromIndex = (targetIndex until player.mediaItemCount)
-                .firstOrNull { player.getMediaItemAt(it).mediaId == target.mediaId }
-                ?: return@forEachIndexed
-            if (fromIndex != targetIndex) player.moveMediaItem(fromIndex, targetIndex)
-        }
-        // The physical queue is already randomized. Use that exact order for shuffle traversal so
-        // the list the user sees and the next item Media3 plays agree.
-        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(IntArray(player.mediaItemCount) { it }, System.nanoTime()))
+        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
         player.shuffleModeEnabled = shuffled
     }
 

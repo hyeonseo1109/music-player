@@ -55,7 +55,7 @@ UI → ViewModel → Repository → Room/Android API 방향을 유지합니다. 
 
 Media3 playlist가 실제 재생 큐입니다. `playback_queue`와 singleton `playback_session`에는 instance ID, track ID, 순서, current track/index, 위치, repeat, shuffle, 시각을 저장합니다. 5초 주기와 timeline/mode 변경 때 저장하며 100ms마다 쓰지 않습니다. 복원 시 유효한 URI만 MediaItem으로 만들고 `setMediaItems(..., index, position)` 후 pause합니다. 같은 곡을 큐에 여러 번 넣어도 저장한 index를 우선해 정확한 인스턴스를 복원합니다.
 
-Queue drag와 shuffle은 UI 배열만 바꾸지 않고 기존 MediaItem을 `moveMediaItem`으로 이동합니다. 서비스 timeline listener가 즉시 Room에 저장하며, shuffle 전환도 현재 MediaSource를 교체하거나 `prepare()`하지 않으므로 재생 위치와 오디오가 유지됩니다. Play Next는 MediaSession custom command로 처리합니다. shuffle 중에도 기존 순회는 보존하고 새 곡을 현재 곡 바로 뒤에 배치합니다.
+Queue drag는 UI 배열만 바꾸지 않고 기존 MediaItem을 `moveMediaItem`으로 이동합니다. shuffle 전환은 2,000곡 이상 큐에서도 메인 스레드를 막지 않도록 Media3 `ShuffleOrder`를 한 번에 갱신하며, 현재 MediaSource를 교체하거나 `prepare()`하지 않아 재생 위치와 오디오가 유지됩니다. 서비스 timeline listener가 즉시 Room에 저장합니다. Play Next는 MediaSession custom command로 처리합니다. shuffle 중에도 기존 순회는 보존하고 새 곡을 현재 곡 바로 뒤에 배치합니다.
 
 ### A-B Repeat
 
