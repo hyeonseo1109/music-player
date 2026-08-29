@@ -186,6 +186,10 @@ fun LuminaraApp(
     fun toggleSelection(track: TrackEntity) {
         selectedIds = if (track.id in selectedIds) selectedIds - track.id else selectedIds + track.id
     }
+    fun playSelectedTracks() {
+        selectedTracks.firstOrNull()?.let { vm.play(it, selectedTracks) }
+        selectedIds = emptySet()
+    }
     // The search results are debounced. Keep the IME's composition and cursor locally
     // instead of feeding the delayed value back into a Korean text field.
     var searchField by remember { mutableStateOf(TextFieldValue(ui.query, TextRange(ui.query.length))) }
@@ -202,7 +206,7 @@ fun LuminaraApp(
             if (selectedTracks.isNotEmpty()) {
                 Text("${selectedTracks.size}곡 선택됨", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { vm.play(selectedTracks.first(), selectedTracks) }) { Icon(Icons.Default.PlayArrow, null); Text("선택 재생") }
+                    TextButton(onClick = ::playSelectedTracks) { Icon(Icons.Default.PlayArrow, null); Text("선택 재생") }
                     IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Default.Close, "선택 해제") }
                 }
             } else {
@@ -225,7 +229,7 @@ fun LuminaraApp(
             )
         } }
     }
-    menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }) { menuTrack = null } }
+    menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
 }
 
 private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; "PLAYED" -> "최근 들은 순"; "COUNT" -> "많이 들은 순"; else -> "곡명 순" }
@@ -250,12 +254,12 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     }
 }
 
-@Composable private fun TrackMenu(track: TrackEntity, ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, close: () -> Unit) {
+@Composable private fun TrackMenu(track: TrackEntity, ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, afterPlay: () -> Unit, close: () -> Unit) {
     var albumPicker by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.displayArtworkUri(), 48) })
-        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, playQueue); close() }
+        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, playQueue); afterPlay(); close() }
         MenuLine(Icons.Default.SkipNext, "다음 곡으로 재생") { vm.player.playNext(track); close() }
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { albumPicker = true }
