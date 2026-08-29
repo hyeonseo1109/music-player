@@ -2,6 +2,7 @@ package com.hendo.hendomusic
 
 import com.hendo.hendomusic.metadata.MetadataConfidence
 import com.hendo.hendomusic.network.GenieLyricsProvider
+import com.hendo.hendomusic.network.GenieSongCandidate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,5 +35,17 @@ class GenieLyricsProviderTest {
         assertTrue(GenieLyricsProvider.parseLines("not json").isEmpty())
         assertTrue(MetadataConfidence.genieLyricsHigh("윤마치", "윤마치", "윤마치 (MRCH)", "윤마치"))
         assertFalse(MetadataConfidence.genieLyricsHigh("Hello", "Artist", "Hello world", "Artist"))
+    }
+
+    @Test fun `manual Genie search keeps alias candidates when strict metadata differs`() {
+        val candidates = listOf(
+            GenieSongCandidate("1", "This Love", "Maroon 5", null),
+            GenieSongCandidate("2", "Unrelated", "Someone", null),
+        )
+
+        val manual = GenieLyricsProvider.manualCandidates(candidates, "This Love (디스 러브)", "Maroon5 (마룬 파이브)")
+
+        assertEquals(listOf("1"), manual.map { it.songId })
+        assertEquals(listOf("1", "2"), GenieLyricsProvider.manualCandidates(candidates, "완전히 다른 로컬 제목", "별명").map { it.songId })
     }
 }

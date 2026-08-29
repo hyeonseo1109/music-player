@@ -24,9 +24,7 @@ class GenieLyricsProvider {
     /** Manual search is intentionally less strict: the user sees and chooses the candidate. */
     suspend fun searchManual(title: String, artist: String): List<GenieLyricsResult> = withContext(Dispatchers.IO) {
         val candidates = requestCandidates(title, artist)
-        val normalizedTitle = MetadataConfidence.normalize(title)
-        val titleMatches = candidates.filter { MetadataConfidence.normalize(it.title) == normalizedTitle }
-        val requested = (titleMatches.ifEmpty { candidates }).take(5)
+        val requested = manualCandidates(candidates, title, artist)
         Log.d("GenieLyrics", "manual title=$title artist=$artist candidates=${candidates.size} requested=${requested.size}")
         requested.mapNotNull(::lyricsFor)
     }
@@ -68,6 +66,25 @@ class GenieLyricsProvider {
                     )
                 }
             }
+
+        /**
+         * Manual search is deliberately permissive: local tags often contain translations,
+         * aliases in parentheses, featured artists, or inconsistent spelling. The user sees the
+         * result and chooses it, unlike background auto-enrichment which stays strict.
+         */
+        internal fun manualCandidates(candidates: List<GenieSongCandidate>, title: String, artist: String): List<GenieSongCandidate> {
+            fun containsEither(left: String, right: String): Boolean {
+                val a = MetadataConfidence.normalize(left)
+                val b = MetadataConfidence.normalize(right)
+                return a.length >= 2 && b.length >= 2 && (a.contains(b) || b.contains(a))
+            }
+            val matching = candidates.filter { candidate ->
+                containsEither(candidate.title, title) || containsEither(candidate.artist, artist)
+            }
+            // The Genie query itself contains the original title and artist (including aliases
+            // in parentheses). If normalized comparison loses those aliases, keep its top hits.
+            return matching.ifEmpty { candidates }.take(5)
+        }
 
         fun parseLines(response: String): List<GenieLyricLine> = runCatching {
             val start = response.indexOf('('); val end = response.lastIndexOf(')')
