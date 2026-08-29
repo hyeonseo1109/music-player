@@ -97,7 +97,7 @@ class PlaybackService : MediaSessionService() {
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).build())
+                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).build())
                 .build()
         }
 
@@ -115,6 +115,10 @@ class PlaybackService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_CLEAR_LOOP -> { clearLoop(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
+                COMMAND_TOGGLE_QUEUE_SHUFFLE -> {
+                    toggleQueueShuffle()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
                 COMMAND_PLAY_NEXT -> Unit
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
             }
@@ -153,6 +157,28 @@ class PlaybackService : MediaSessionService() {
         shifted.add(currentTraversalIndex + 1, at)
         player.addMediaItem(at, item)
         player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(shifted.toIntArray(), System.nanoTime()))
+    }
+
+    /** Reorder the visible queue itself, so UI, Media3 and Room all share the same shuffle order. */
+    private fun toggleQueueShuffle() {
+        val current = player.currentMediaItem ?: run {
+            player.shuffleModeEnabled = !player.shuffleModeEnabled
+            return
+        }
+        val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
+        val shuffled = !player.shuffleModeEnabled
+        val ordered = if (shuffled) {
+            items.shuffled().let { random ->
+                // Do not interrupt the current song while the surrounding queue is randomized.
+                listOf(current) + random.filterNot { it.mediaId == current.mediaId }
+            }
+        } else {
+            items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.mediaMetadata.title?.toString().orEmpty() })
+        }
+        val index = ordered.indexOfFirst { it.mediaId == current.mediaId }.coerceAtLeast(0)
+        player.setMediaItems(ordered, index, player.currentPosition)
+        player.shuffleModeEnabled = shuffled
+        player.prepare()
     }
 
     private suspend fun restore() = withContext(Dispatchers.IO) {
@@ -242,12 +268,14 @@ class PlaybackService : MediaSessionService() {
         const val KEY_TRACK_ID = "track_id"
         const val KEY_PLAY_NEXT = "play_next"
         const val COMMAND_PLAY_NEXT = "com.hendo.hendomusic.PLAY_NEXT"
+        const val COMMAND_TOGGLE_QUEUE_SHUFFLE = "com.hendo.hendomusic.TOGGLE_QUEUE_SHUFFLE"
         const val ARG_MEDIA_ITEM = "media_item"
         const val COMMAND_SET_LOOP = "com.hendo.hendomusic.SET_LOOP"
         const val COMMAND_CLEAR_LOOP = "com.hendo.hendomusic.CLEAR_LOOP"
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
         val PLAY_NEXT_COMMAND = SessionCommand(COMMAND_PLAY_NEXT, android.os.Bundle.EMPTY)
+        val TOGGLE_QUEUE_SHUFFLE_COMMAND = SessionCommand(COMMAND_TOGGLE_QUEUE_SHUFFLE, android.os.Bundle.EMPTY)
         val SET_LOOP_COMMAND = SessionCommand(COMMAND_SET_LOOP, android.os.Bundle.EMPTY)
         val CLEAR_LOOP_COMMAND = SessionCommand(COMMAND_CLEAR_LOOP, android.os.Bundle.EMPTY)
     }

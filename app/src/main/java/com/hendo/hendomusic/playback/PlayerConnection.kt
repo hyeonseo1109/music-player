@@ -77,7 +77,22 @@ class PlayerConnection(private val context: Context) {
     fun next() { clearLoop(); controller?.seekToNextMediaItem() }
     fun previous() { clearLoop(); controller?.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
-    fun toggleShuffle() { controller?.shuffleModeEnabled = !(controller?.shuffleModeEnabled ?: false) }
+    fun toggleShuffle() {
+        controller?.apply {
+            val current = currentMediaItem ?: run { shuffleModeEnabled = !shuffleModeEnabled; return@apply }
+            val enabled = !shuffleModeEnabled
+            val items = (0 until mediaItemCount).map(::getMediaItemAt)
+            val ordered = if (enabled) {
+                listOf(current) + items.shuffled().filterNot { it.mediaId == current.mediaId }
+            } else {
+                items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.mediaMetadata.title?.toString().orEmpty() })
+            }
+            val index = ordered.indexOfFirst { it.mediaId == current.mediaId }.coerceAtLeast(0)
+            setMediaItems(ordered, index, currentPosition)
+            shuffleModeEnabled = enabled
+            prepare()
+        }
+    }
     fun cycleRepeat() { clearLoop(); controller?.repeatMode = ((controller?.repeatMode ?: 0) + 1) % 3 }
     fun setRepeatMode(mode: Int) { clearLoop(); controller?.repeatMode = mode }
     fun setLoop(startMs: Long, endMs: Long) {

@@ -60,6 +60,7 @@ dependencies {
     implementation("androidx.media3:media3-common:1.7.1")
     implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")
     implementation("com.squareup.retrofit2:retrofit:3.0.0")
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
