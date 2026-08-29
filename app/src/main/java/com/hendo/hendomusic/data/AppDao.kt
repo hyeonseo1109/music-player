@@ -46,17 +46,26 @@ interface AppDao {
 
     @Query("SELECT * FROM user_albums ORDER BY sortOrder") fun observeAlbums(): Flow<List<UserAlbumEntity>>
     @Query("SELECT * FROM user_albums WHERE folderId IS NULL ORDER BY sortOrder") suspend fun rootAlbums(): List<UserAlbumEntity>
+    @Query("SELECT * FROM user_albums WHERE name=:name AND folderId IS NULL LIMIT 1") suspend fun rootAlbumNamed(name: String): UserAlbumEntity?
     @Insert suspend fun insertAlbum(album: UserAlbumEntity): Long
     @Query("UPDATE user_albums SET name=:name WHERE id=:id") suspend fun renameAlbum(id: Long, name: String)
     @Query("UPDATE user_albums SET folderId=:folderId, sortOrder=:sortOrder WHERE id=:id") suspend fun moveAlbum(id: Long, folderId: Long?, sortOrder: Int)
     @Transaction suspend fun reorderAlbums(ids: List<Long>, folderId: Long?) { ids.forEachIndexed { index, id -> moveAlbum(id, folderId, index) } }
     @Query("DELETE FROM user_albums WHERE id=:id") suspend fun deleteAlbum(id: Long)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun addAlbumTrack(item: AlbumTrackEntity)
+    @Query("DELETE FROM album_tracks WHERE albumId=:albumId") suspend fun clearAlbumTracks(albumId: Long)
     @Transaction suspend fun createAlbumWithTracks(album: UserAlbumEntity, trackIds: List<String>): Long {
         val albumId = insertAlbum(album)
         trackIds.distinct().forEachIndexed { index, trackId ->
             addAlbumTrack(AlbumTrackEntity(albumId, trackId, index))
         }
+        return albumId
+    }
+    @Transaction suspend fun replaceRootAlbumTracks(name: String, sortOrder: Int, trackIds: List<String>): Long {
+        val existing = rootAlbumNamed(name)
+        val albumId = existing?.id ?: insertAlbum(UserAlbumEntity(name = name, sortOrder = sortOrder))
+        clearAlbumTracks(albumId)
+        trackIds.distinct().forEachIndexed { index, trackId -> addAlbumTrack(AlbumTrackEntity(albumId, trackId, index)) }
         return albumId
     }
     @Query("SELECT tracks.* FROM tracks INNER JOIN album_tracks ON tracks.id=album_tracks.trackId WHERE album_tracks.albumId=:albumId ORDER BY album_tracks.sortOrder")

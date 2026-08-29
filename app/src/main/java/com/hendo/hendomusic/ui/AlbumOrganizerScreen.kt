@@ -31,12 +31,13 @@ import com.hendo.hendomusic.PlaylistImportState
 import kotlin.math.roundToInt
 
 @Composable
-fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlaylist: () -> Unit) {
+fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlaylist: () -> Unit, exportPlaylist: (UserAlbumEntity) -> Unit) {
     var createAlbum by remember { mutableStateOf(false) }
     var createFolder by remember { mutableStateOf(false) }
     var folderSheet by remember { mutableStateOf<AlbumFolderEntity?>(null) }
     var pendingPair by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     var specialTracks by remember { mutableStateOf<Pair<String, List<com.hendo.hendomusic.data.TrackEntity>>?>(null) }
+    var exportSheet by remember { mutableStateOf(false) }
     val rootAlbums = remember { mutableStateListOf<UserAlbumEntity>() }
     var draggedId by remember { mutableStateOf<Long?>(null) }
     var dragX by remember { mutableFloatStateOf(0f) }
@@ -66,7 +67,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
             title = { Text("내 앨범") },
             actions = {
                 IconButton({ createFolder = true }) { Icon(Icons.Default.CreateNewFolder, "빈 폴더 만들기") }
+                IconButton(viewModel::importPublicPlaylists) { Icon(Icons.Default.Sync, "삼성뮤직 공개 재생목록 동기화") }
                 IconButton(choosePlaylist) { Icon(Icons.Default.FileUpload, "삼성뮤직 재생목록 가져오기") }
+                IconButton({ exportSheet = true }) { Icon(Icons.Default.FileDownload, "삼성뮤직으로 내 앨범 내보내기") }
                 IconButton({ createAlbum = true }) { Icon(Icons.Default.Add, "앨범 만들기") }
             },
         )
@@ -120,6 +123,11 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
     }
 
     if (createAlbum) AlbumNameDialog("새 앨범") { name -> name?.let(viewModel::createAlbum); createAlbum = false }
+    if (exportSheet) AlertDialog(
+        onDismissRequest = { exportSheet = false }, title = { Text("삼성뮤직으로 내보낼 앨범") },
+        text = { if (ui.albums.isEmpty()) Text("내보낼 사용자 앨범이 없습니다.") else LazyColumn(Modifier.heightIn(max = 360.dp)) { items(ui.albums, key = { it.id }) { album -> ListItem({ Text(album.name) }, modifier = Modifier.clickable { exportPlaylist(album); exportSheet = false }) } } },
+        confirmButton = { TextButton({ exportSheet = false }) { Text("닫기") } },
+    )
     if (createFolder) AlbumNameDialog("새 앨범 폴더") { name -> name?.let(viewModel::createFolder); createFolder = false }
     pendingPair?.let { pair ->
         AlbumNameDialog("새 폴더 이름", "새 폴더") { name -> name?.let { viewModel.createFolderFromAlbums(it, pair.first, pair.second) }; pendingPair = null }

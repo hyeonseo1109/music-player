@@ -58,6 +58,7 @@ fun LuminaraApp(
     chooseTree: () -> Unit,
     chooseLrc: () -> Unit,
     choosePlaylist: () -> Unit,
+    exportPlaylist: (UserAlbumEntity) -> Unit,
     onFloatingChanged: (Boolean) -> Unit,
     requestDelete: (TrackEntity) -> Unit,
     requestMetadataWrite: (TrackEntity, MetadataUpdate, (String) -> Unit) -> Unit,
@@ -88,7 +89,7 @@ fun LuminaraApp(
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
-            composable("albums") { AlbumOrganizerScreen(ui, viewModel, choosePlaylist) }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel, choosePlaylist, exportPlaylist) }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
             composable("nowLyrics/{trackId}") { back ->

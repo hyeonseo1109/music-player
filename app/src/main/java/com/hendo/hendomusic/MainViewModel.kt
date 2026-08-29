@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import android.net.Uri
+import android.provider.MediaStore
 import com.hendo.hendomusic.artwork.ArtworkRepository
 import com.hendo.hendomusic.artwork.ArtworkSearchState
 import com.hendo.hendomusic.data.*
@@ -169,6 +170,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val skipped = playlist.entries.size - trackIds.size
             PlaylistImportState.Success("${playlist.name} 앨범에 ${trackIds.size}곡을 가져왔습니다" + if (skipped > 0) " · ${skipped}곡은 찾지 못했습니다" else "")
         }.getOrElse { PlaylistImportState.Error(it.localizedMessage ?: "재생목록 가져오기에 실패했습니다.") }
+    }
+    /** Reads only playlists intentionally exposed by Android's shared MediaStore. */
+    fun importPublicPlaylists() = viewModelScope.launch {
+        mutablePlaylistImport.value = runCatching {
+            val resolver = getApplication<Application>().contentResolver
+            val playlists = resolver.query(
+                MediaStore.Audio.Playlists.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Playlists._ID, MediaStore.Audio.Playlists.NAME), null, null, null,
+            )?.use { cursor ->
+                buildList {
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Playlists._ID)
+                    val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Playlists.NAME)
+                    while (cursor.moveToNext()) add(cursor.getLong(idColumn) to cursor.getString(nameColumn))
+                }
+            }.orEmpty()
+            require(playlists.isNotEmpty()) { "공개된 기기 재생목록이 없습니다. 삼성뮤직에서 내보낸 파일을 선택해 주세요." }
+            val localIds = uiState.value.tracks.mapNotNull { track -> track.mediaStoreId?.let { it to track.id } }.toMap()
+            var imported = 0
+            playlists.forEach { (playlistId, name) ->
+                val memberUri = MediaStore.Audio.Playlists.Members.getContentUri("external", playlistId)
+                val trackIds = resolver.query(memberUri, arrayOf(MediaStore.Audio.Playlists.Members.AUDIO_ID), null, null, "play_order ASC")
+                    ?.use { cursor -> buildList { val column = cursor.getColumnIndexOrThrow(MediaStore.Audio.Playlists.Members.AUDIO_ID); while (cursor.moveToNext()) localIds[cursor.getLong(column)]?.let(::add) } }
+                    .orEmpty()
+                if (trackIds.isNotEmpty()) {
+                    dao.replaceRootAlbumTracks(name, uiState.value.albums.count { it.folderId == null }, trackIds)
+                    imported++
+                }
+            }
+            require(imported > 0) { "공개 재생목록에 현재 보관함과 일치하는 곡이 없습니다." }
+            PlaylistImportState.Success("공개 재생목록 ${imported}개를 내 앨범으로 동기화했습니다")
+        }.getOrElse { PlaylistImportState.Error(it.localizedMessage ?: "공개 재생목록을 가져오지 못했습니다.") }
+    }
+    fun exportAlbumM3u(albumId: Long, done: (String, String) -> Unit) = viewModelScope.launch {
+        val album = uiState.value.albums.firstOrNull { it.id == albumId } ?: return@launch
+        dao.observeAlbumTracks(albumId).first().takeIf { it.isNotEmpty() }?.let { tracks ->
+            val body = buildString {
+                appendLine("#EXTM3U")
+                tracks.forEach { track ->
+                    appendLine("#EXTINF:${track.durationMs / 1_000},${track.artist} - ${track.title}")
+                    appendLine(track.relativePath?.let { "${it.trimEnd('/')}/${track.fileName}" } ?: track.fileName)
+                }
+            }
+            done("${album.name}.m3u", body)
+        }
     }
     fun resetPlaylistImport() { mutablePlaylistImport.value = PlaylistImportState.Idle }
     fun observeAlbumTracks(albumId: Long) = dao.observeAlbumTracks(albumId)
