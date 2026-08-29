@@ -5,6 +5,7 @@ package com.hendo.hendomusic.ui
 import android.Manifest
 import android.os.Build
 import android.provider.Settings
+import androidx.media3.common.Player
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -35,6 +36,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
 import com.hendo.hendomusic.MainViewModel
+import com.hendo.hendomusic.MainUiState
 import com.hendo.hendomusic.data.*
 import com.hendo.hendomusic.library.MetadataUpdate
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
@@ -82,7 +84,7 @@ fun LuminaraApp(
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
             composable("albums") { AlbumOrganizerScreen(ui, viewModel) }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, onFloatingChanged) }
-            composable("player") { NowPlayingScreen(playback, viewModel, nav, ui.tracks) }
+            composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
             composable("nowLyrics/{trackId}") { back ->
                 NowPlayingLyricsScreen(back.arguments?.getString("trackId").orEmpty(), playback.positionMs, viewModel) { nav.popBackStack() }
             }
@@ -171,7 +173,7 @@ fun LuminaraApp(
         if (ui.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
         ui.scanMessage?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall) }
         if (!ui.scanning && ui.tracks.isEmpty()) EmptyLibrary(vm::scan)
-        else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track -> MusicRow(track, { vm.play(track, ui.tracks) }, { selected = track }) } }
+        else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track -> MusicRow(track, { vm.play(track, ui.visibleTracks) }, { selected = track }) } }
     }
     selected?.let { TrackMenu(it, ui, vm, nav, requestDelete) { selected = null } }
 }
@@ -202,7 +204,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     var deleteConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.displayArtworkUri(), 48) })
-        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, ui.tracks); close() }
+        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, ui.visibleTracks); close() }
         MenuLine(Icons.Default.SkipNext, "다음 곡으로 재생") { vm.player.playNext(track); close() }
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { albumPicker = true }
@@ -232,14 +234,20 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     Surface(color = Color.Transparent, modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp).purpleGlass(18).clickable(onClick = open)) { Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) { Artwork(item.mediaMetadata.artworkUri?.toString(), 46); Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1); Text(item.mediaMetadata.artist?.toString().orEmpty(), maxLines = 1, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; FilledIconButton(toggle, Modifier.size(42.dp)) { Icon(if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null) }; IconButton(next) { Icon(Icons.Default.SkipNext, null) } } }
 }
 
-@Composable private fun NowPlayingScreen(state: PlaybackState, vm: MainViewModel, nav: NavHostController, tracks: List<TrackEntity>) {
+@Composable private fun NowPlayingScreen(state: PlaybackState, vm: MainViewModel, nav: NavHostController, ui: MainUiState) {
+    val tracks = ui.tracks
     val item = state.current
     var moreOpen by remember { mutableStateOf(false) }
     var lyricsMode by remember { mutableStateOf(false) }
+    var repeatOptions by remember { mutableStateOf(false) }
+    var addAlbumOpen by remember { mutableStateOf(false) }
     var pendingLoopStart by remember(item?.mediaId) { mutableStateOf<Long?>(null) }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.KeyboardArrowDown, null) }; Text("지금 재생 중", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Box { IconButton({ moreOpen = true }) { Icon(Icons.Default.MoreVert, "더보기") }; DropdownMenu(moreOpen, { moreOpen = false }) { val id = item?.mediaMetadata?.extras?.getString("track_id"); DropdownMenuItem({ Text("곡 정보·앨범 커버 변경") }, { moreOpen = false; id?.let { nav.navigate("metadata/$it") } }); DropdownMenuItem({ Text("가사 검색") }, { moreOpen = false; id?.let { nav.navigate("lyricsSearch/$it") } }); DropdownMenuItem({ Text("가사 직접 입력/수정") }, { moreOpen = false; id?.let { nav.navigate("lyrics/$it") } }); DropdownMenuItem({ Text("가사 싱크 편집") }, { moreOpen = false; id?.let { nav.navigate("sync/$it") } }) } } }
-        Spacer(Modifier.height(if (lyricsMode) 12.dp else 24.dp)); Box(Modifier.clickable { lyricsMode = !lyricsMode }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), if (lyricsMode) 96 else 292) }; Spacer(Modifier.height(if (lyricsMode) 12.dp else 28.dp))
+        val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
+        Spacer(Modifier.height(if (lyricsMode) 12.dp else 24.dp)); Box(Modifier.clickable { lyricsMode = !lyricsMode }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), if (lyricsMode) 96 else 292) }
+        if (lyricsMode) track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = true) }
+        Spacer(Modifier.height(if (lyricsMode) 12.dp else 28.dp))
         Text(item?.mediaMetadata?.title?.toString() ?: "재생 중인 곡 없음", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp)); Slider(value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { vm.player.seekTo(it.roundToLong()) }, valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f))
@@ -249,12 +257,17 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             IconButton(vm.player::previous) { Icon(Icons.Default.SkipPrevious, null, Modifier.size(36.dp)) }
             FilledIconButton(vm.player::toggle, Modifier.size(70.dp)) { Icon(if(state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, Modifier.size(36.dp)) }
             IconButton(vm.player::next) { Icon(Icons.Default.SkipNext, null, Modifier.size(36.dp)) }
-            IconButton(vm.player::cycleRepeat) { Icon(if(state.repeatMode == 1) Icons.Default.Repeat else if(state.repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, null, tint = if(state.repeatMode != 0) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
+            IconButton({ vm.player.cycleRepeat(); repeatOptions = true }) { Icon(if(state.repeatMode == 1) Icons.Default.Repeat else if(state.repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, "반복", tint = if(state.repeatMode != 0) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
         }
         val loop = state.loopRange
-        Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = if (loop != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
+        if (repeatOptions) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = if (loop != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
             Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (loop == null) "A-B 구간 반복" else "반복 A ${formatTime(loop.startMs)}  ·  B ${formatTime(loop.endMs)}", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Player.REPEAT_MODE_OFF to "반복 안 함", Player.REPEAT_MODE_ONE to "한 곡 반복", Player.REPEAT_MODE_ALL to "전체 반복").forEach { (mode, label) ->
+                        FilterChip(state.repeatMode == mode, { vm.player.setRepeatMode(mode) }, { Text(label) })
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedButton({ pendingLoopStart = state.positionMs }) { Text(if (pendingLoopStart == null) "시작 지점 설정" else "A ${formatTime(pendingLoopStart!!)}") }
                     Button({ pendingLoopStart?.let { vm.player.setLoop(it, state.positionMs); pendingLoopStart = null } }, enabled = pendingLoopStart != null) { Text("끝 지점 설정") }
@@ -267,9 +280,9 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
                 }
             }
         }
-        val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
-        Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) }; IconButton({ track?.let { nav.navigate("lyricsSearch/${it.id}") } }) { Icon(Icons.Default.Lyrics, "가사 검색") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, null) } }
-        track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = lyricsMode) }
+        Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "좋아요") }; IconButton({ addAlbumOpen = true }) { Icon(Icons.Default.Album, "내 앨범에 추가") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, "현재 재생목록") } }
+        if (!lyricsMode) track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm) }
+        if (addAlbumOpen && track != null) AlertDialog(onDismissRequest = { addAlbumOpen = false }, title = { Text("내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ vm.addToAlbum(album.id, track.id); addAlbumOpen = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); addAlbumOpen = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ addAlbumOpen = false }) { Text("취소") } })
     } }
 }
 

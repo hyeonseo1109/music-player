@@ -10,14 +10,14 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - Media3 `ExoPlayer` + `MediaSessionService` 백그라운드 재생, 미디어 알림/잠금화면/Bluetooth 미디어 키
 - Audio Focus 및 audio-becoming-noisy에 의한 유선·USB·Bluetooth 출력 분리 시 일시정지
 - 전체 곡, 실시간/한글 초성 검색, 정렬 저장, MusicRow/곡 메뉴
-- Now Playing, seek/이전/재생/다음/repeat/shuffle, MediaController와 동기화되는 Mini Player
+- Now Playing의 좋아요·내 앨범 추가·현재 재생목록, 앨범커버 탭 가사 전환, seek/이전/재생/다음/shuffle 및 접어서 여는 repeat/A-B 패널, MediaController와 동기화되는 Mini Player
 - PlaybackService가 관리하는 직접 A-B 구간 반복과 현재 위치 기준 이전 3초/5초/10초 즉시 반복
 - drag handle로 순서를 바로 바꾸는 실제 Media3 playlist, Play Next, Room 큐·현재 곡·위치·repeat·shuffle 저장/복원
 - 삭제된 곡을 제외한 안전한 큐 복원, 재실행 시 자동 재생하지 않는 paused 복원
-- 좋아요/많이 들은 곡 고정 앨범, 사용자 앨범 drag 정렬, 1-depth 폴더 생성·추가·root 이동·이름 변경·해체
+- 좋아요/많이 들은 곡 고정 앨범, 사용자 앨범 drag 정렬, 1-depth 폴더 생성·추가·root 이동·이름 변경·해체, 폴더 안 앨범·곡 펼쳐 보기
 - 로컬 일반/싱크 가사, LRCLIB + HendoMusic 공유 가사 검색, 전체 미리보기 → local copy 편집 → 저장, 직접 입력, Android 파일 선택기를 통한 LRC 가져오기
 - 싱크 줄 재지정, 이전/다음 줄, ±3초 seek, 전체 offset ±100/500/1000ms
-- 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
+- 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 고정 폭 안 줄바꿈과 현재 싱크 줄 강조, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
 - Photo Picker 또는 iTunes 검색 결과 → 1:1 이동/확대 crop → 미리보기/적용. 원격 다운로드의 `file://` 임시 이미지도 crop 저장 경로에서 지원하며, iTunes artwork grid는 loading/empty/error/retry를 제공
 - LRCLIB 수동 가사 검색은 `HendoMusic/1.0 (Android)` User-Agent로 Cloudflare 520을 피하고, 후보별 제목·아티스트·앨범·길이·싱크 여부와 전체 가사 미리보기를 제공
 - 곡 metadata 기반 iTunes/LRCLIB high-confidence 자동 enrichment. 앱 시작 소수 배치, 현재 재생 곡 우선, 재스캔 뒤 background 배치로 처리하며 전체 라이브러리를 한꺼번에 요청하지 않음. Now Playing은 Room Flow를 관찰하므로 background 결과가 저장되면 열린 가사 화면도 즉시 갱신
@@ -67,7 +67,7 @@ ExoPlayer에 media `AudioAttributes`와 audio focus 자동 처리를 활성화�
 
 ### Lyrics Sync / Floating Lyrics
 
-일반 가사와 `startTimeMs` 줄 데이터를 별도로 저장합니다. `LrcCodec`은 `.lrc` timestamp, active line, 전체 offset을 처리합니다. Now Playing과 Overlay는 재생 위치로 현재 싱크 줄을 갱신하며, 일반 가사는 줄 단위로 표시합니다. Overlay는 화면 전체가 아닌 `WRAP_CONTENT` 창이라 바깥 앱 터치를 가로채지 않고, 화면 회전/경계 밖 이동 때 위치를 보정합니다. X는 표시만 닫고 설정은 유지합니다.
+일반 가사와 `startTimeMs` 줄 데이터를 별도로 저장합니다. `LrcCodec`은 `.lrc` timestamp, active line, 전체 offset을 처리합니다. Now Playing과 Overlay는 재생 위치로 현재 싱크 줄을 갱신하며, 일반 가사는 줄 단위로 표시합니다. Overlay는 화면 전체가 아닌 고정 폭의 비포커스 창이라 바깥 앱 터치를 가로채지 않고, 긴 줄은 자동 줄바꿈하며 현재 줄만 강조합니다. 화면 회전/경계 밖 이동 때 위치를 보정하고 X는 표시만 닫고 설정은 유지합니다.
 
 ### Artwork / Lyrics Auto Enrichment
 
@@ -139,7 +139,11 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | 30초 이상 재생 뒤 play count/history | PASS (30,652ms, count 1) | NOT VERIFIED |
 | force-stop 뒤 큐·현재 곡·약 58초 위치 paused 복원 | PASS | PASS (약 39초, paused) |
 | Queue 실제 drag 및 Room 순서 저장 | PASS | PASS (Galaxy drag handle, UI·Media3·Room 순서 일치) |
-| 단일 곡 탭의 큐 교체 | PASS | PASS — MediaSession 재생 및 force-stop 뒤 Room `playback_queue` 1개 확인 |
+| 목록에서 곡 탭 시 현재 목록 큐 구성 | PASS | PASS — 최근 추가 정렬의 2,619곡이 같은 순서로 큐에 들어가며 선택한 `Fendi 2`는 4번째 current, UI·Media3·Room 일치 |
+| Next / Previous 기본 이동 | PASS | PASS — `Fendi 2 → Creep → Fendi 2` 실제 재생 확인 |
+| Now Playing 앨범커버 가사 전환·반복 패널 | NOT VERIFIED | PASS — cover 영역 가사 전환, repeat 버튼에서 반복 안 함/한 곡/전체 반복과 A-B 패널 표시 |
+| 플로팅 싱크 가사 고정 폭·줄바꿈·현재 줄 강조 | NOT VERIFIED | PASS — Home 화면에서 `Creep`의 긴 현재 줄 줄바꿈·보라 강조와 다음 줄 일반색 확인 |
+| 폴더 안 앨범·곡 펼치기 | NOT VERIFIED | PASS — `새` 폴더에서 앨범 목록과 빈 앨범 안내 표시 확인 |
 | 현재 재생목록에 추가 (Append) | PASS | PASS — `A → B`, current/position 유지, Room 순서 및 MediaSession Next로 B 확인 |
 | Play Next (shuffle OFF) | PASS | NOT VERIFIED |
 | Play Next (shuffle ON) | PASS | NOT VERIFIED |

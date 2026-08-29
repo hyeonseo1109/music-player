@@ -139,6 +139,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     private suspend fun normalizeRootAlbums() { dao.reorderAlbums(dao.rootAlbums().map { it.id }, null) }
     fun addToAlbum(albumId: Long, trackId: String) = viewModelScope.launch { dao.addAlbumTrack(AlbumTrackEntity(albumId, trackId, Int.MAX_VALUE)) }
+    fun observeAlbumTracks(albumId: Long) = dao.observeAlbumTracks(albumId)
     fun startSyncPlayback(trackId: String) = viewModelScope.launch {
         dao.track(trackId)?.let { play(it) }
     }

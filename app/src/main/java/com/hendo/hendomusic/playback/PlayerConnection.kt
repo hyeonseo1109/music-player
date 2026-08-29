@@ -60,10 +60,12 @@ class PlayerConnection(private val context: Context) {
         future?.let(MediaController::releaseFuture)
         handler.removeCallbacks(ticker); controller = null; future = null; mutableState.value = PlaybackState()
     }
-    /** A direct tap starts a deliberate one-item queue; it must not silently enqueue the full library. */
+    /** A library tap starts at the selected item while retaining the browsed library as the queue. */
     fun play(track: com.hendo.hendomusic.data.TrackEntity, library: List<com.hendo.hendomusic.data.TrackEntity> = emptyList()) {
         controller?.apply {
-            setMediaItem(track.asMediaItem(), 0); prepare(); play()
+            val queue = library.ifEmpty { listOf(track) }
+            val index = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+            setMediaItems(queue.map { it.asMediaItem() }, index, 0); prepare(); play()
         }
     }
     fun toggle() { controller?.let { player ->
@@ -77,6 +79,7 @@ class PlayerConnection(private val context: Context) {
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
     fun toggleShuffle() { controller?.shuffleModeEnabled = !(controller?.shuffleModeEnabled ?: false) }
     fun cycleRepeat() { clearLoop(); controller?.repeatMode = ((controller?.repeatMode ?: 0) + 1) % 3 }
+    fun setRepeatMode(mode: Int) { clearLoop(); controller?.repeatMode = mode }
     fun setLoop(startMs: Long, endMs: Long) {
         val range = LoopRangePolicy.create(startMs, endMs) ?: return
         loopRange = range

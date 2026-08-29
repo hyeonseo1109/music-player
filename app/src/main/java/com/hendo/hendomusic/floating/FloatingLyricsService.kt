@@ -7,6 +7,8 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Point
 import android.graphics.PixelFormat
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -60,16 +62,16 @@ class FloatingLyricsService : Service() {
         val settings = (application as LuminaraApplication).container.preferences.settings.first()
         floatingLineCount = settings.floatingLines
         params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            620, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START; x = settings.overlayX; y = settings.overlayY }
         root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(22); minimumWidth = 520
+            orientation = LinearLayout.VERTICAL; setPadding(22)
             background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 28f; setColor(Color.argb((settings.floatingAlpha * 255).toInt(), 14, 10, 22)) }
             addView(TextView(context).apply { id = TITLE_ID; setTextColor(Color.WHITE); textSize = settings.floatingFontSize.toFloat(); gravity = Gravity.CENTER; text = "HendoMusic" })
-            addView(TextView(context).apply { id = LYRIC_ID; setTextColor(Color.rgb(190, 166, 255)); textSize = (settings.floatingFontSize + 1).toFloat(); gravity = Gravity.CENTER; text = "가사를 불러올 수 없습니다." })
+            addView(TextView(context).apply { id = LYRIC_ID; setTextColor(Color.WHITE); textSize = (settings.floatingFontSize + 1).toFloat(); gravity = Gravity.CENTER; maxLines = floatingLineCount; text = "가사를 불러올 수 없습니다." })
             setOnTouchListener(DragTouchListener())
             setOnClickListener { if (!expanded) expandControls() }
         }
@@ -118,9 +120,12 @@ class FloatingLyricsService : Service() {
     }
 
     private fun updateLyricText(positionMs: Long) {
-        val text = if (syncedLyrics.isNotEmpty()) {
+        val text: CharSequence = if (syncedLyrics.isNotEmpty()) {
             val active = LrcCodec.activeIndex(syncedLyrics, positionMs).coerceAtLeast(0)
-            syncedLyrics.drop(active).take(floatingLineCount).joinToString("\n") { it.text }
+            val lines = syncedLyrics.drop(active).take(floatingLineCount).map { it.text }
+            SpannableString(lines.joinToString("\n")).apply {
+                lines.firstOrNull()?.length?.takeIf { it > 0 }?.let { setSpan(ForegroundColorSpan(Color.rgb(190, 166, 255)), 0, it, 0) }
+            }
         } else plainLyrics.lineSequence().filter { it.isNotBlank() }.take(floatingLineCount).joinToString("\n").ifBlank { "가사를 불러올 수 없습니다." }
         root?.findViewById<TextView>(LYRIC_ID)?.text = text
     }

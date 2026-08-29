@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hendo.hendomusic.MainUiState
 import com.hendo.hendomusic.MainViewModel
 import com.hendo.hendomusic.data.AlbumFolderEntity
@@ -111,7 +112,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
         FolderSheet(folder, ui.albums.filter { it.folderId == folder.id }, viewModel) { folderSheet = null }
     }
     specialTracks?.let { (name, tracks) ->
-        AlertDialog(onDismissRequest = { specialTracks = null }, title = { Text(name) }, text = { if (tracks.isEmpty()) Text("아직 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 380.dp)) { items(tracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track); specialTracks = null }) } } }, confirmButton = { TextButton({ specialTracks = null }) { Text("닫기") } })
+        AlertDialog(onDismissRequest = { specialTracks = null }, title = { Text(name) }, text = { if (tracks.isEmpty()) Text("아직 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 380.dp)) { items(tracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track, tracks); specialTracks = null }) } } }, confirmButton = { TextButton({ specialTracks = null }) { Text("닫기") } })
     }
 }
 
@@ -149,6 +150,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
 @Composable private fun FolderSheet(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, close: () -> Unit) {
     var rename by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var openedAlbum by remember { mutableStateOf<UserAlbumEntity?>(null) }
     ModalBottomSheet(onDismissRequest = close) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(folder.name, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
@@ -160,9 +162,14 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
             ListItem(
                 headlineContent = { Text(album.name) }, leadingContent = { Icon(Icons.Default.Album, null) },
                 trailingContent = { TextButton({ viewModel.moveAlbumToRoot(album.id) }) { Text("root로 이동") } },
+                modifier = Modifier.clickable { openedAlbum = album },
             )
         }
         Spacer(Modifier.height(28.dp))
+    }
+    openedAlbum?.let { album ->
+        val albumTracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
+        AlertDialog(onDismissRequest = { openedAlbum = null }, title = { Text(album.name) }, text = { if (albumTracks.isEmpty()) Text("이 앨범에 담긴 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 360.dp)) { items(albumTracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track, albumTracks); openedAlbum = null; close() }) } } }, confirmButton = { TextButton({ openedAlbum = null }) { Text("닫기") } })
     }
     if (rename) AlbumNameDialog("폴더명 수정", folder.name) { it?.let { name -> viewModel.renameFolder(folder.id, name) }; rename = false }
     if (confirmDelete) AlertDialog(
