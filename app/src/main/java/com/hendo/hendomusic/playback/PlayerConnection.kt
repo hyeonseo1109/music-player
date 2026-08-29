@@ -27,6 +27,7 @@ data class PlaybackState(
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val shuffle: Boolean = false,
     val loopRange: LoopRange? = null,
+    val hasPreviousQueue: Boolean = false,
 )
 
 @UnstableApi
@@ -40,6 +41,8 @@ class PlayerConnection(private val context: Context) {
     private val mutableState = MutableStateFlow(PlaybackState())
     private var loopRange: LoopRange? = null
     private var loopTrackId: String? = null
+    private var previousQueue: List<MediaItem> = emptyList()
+    private var previousIndex: Int = 0
     val state: StateFlow<PlaybackState> = mutableState.asStateFlow()
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = publish(player)
@@ -63,6 +66,7 @@ class PlayerConnection(private val context: Context) {
     /** A library tap starts at the selected item while retaining the browsed library as the queue. */
     fun play(track: com.hendo.hendomusic.data.TrackEntity, library: List<com.hendo.hendomusic.data.TrackEntity> = emptyList()) {
         controller?.apply {
+            snapshotQueue(this)
             val queue = library.ifEmpty { listOf(track) }
             val index = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
             setMediaItems(queue.map { it.asMediaItem() }, index, 0); prepare(); play()
@@ -97,29 +101,46 @@ class PlayerConnection(private val context: Context) {
         controller?.sendCustomCommand(PlaybackService.CLEAR_LOOP_COMMAND, Bundle.EMPTY)
         controller?.let(::publish)
     }
-    fun append(track: com.hendo.hendomusic.data.TrackEntity) { controller?.addMediaItem(track.asMediaItem()) }
+    fun append(track: com.hendo.hendomusic.data.TrackEntity) { controller?.let { snapshotQueue(it); it.addMediaItem(track.asMediaItem()) } }
     fun playNext(track: com.hendo.hendomusic.data.TrackEntity) {
         controller?.sendCustomCommand(
             PlaybackService.PLAY_NEXT_COMMAND,
             Bundle().apply { putBundle(PlaybackService.ARG_MEDIA_ITEM, track.asMediaItem().toBundleIncludeLocalConfiguration()) },
         )
     }
-    fun move(from: Int, to: Int) { controller?.moveMediaItem(from, to) }
+    fun move(from: Int, to: Int) { controller?.let { snapshotQueue(it); it.moveMediaItem(from, to) } }
     fun removeTrack(trackId: String) {
         controller?.apply {
+            snapshotQueue(this)
             (mediaItemCount - 1 downTo 0)
                 .filter { getMediaItemAt(it).mediaMetadata.extras?.getString(PlaybackService.KEY_TRACK_ID) == trackId }
                 .forEach(::removeMediaItem)
         }
     }
-    fun clear() { controller?.clearMediaItems() }
+    fun clear() { controller?.let { snapshotQueue(it); it.clearMediaItems() } }
+    /** Exchanges the current queue with the immediately preceding queue. */
+    fun restorePreviousQueue() { controller?.let { player ->
+        if (previousQueue.isEmpty()) return
+        val current = (0 until player.mediaItemCount).map(player::getMediaItemAt)
+        val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+        val restore = previousQueue
+        val restoreIndex = previousIndex.coerceIn(0, restore.lastIndex)
+        previousQueue = current; previousIndex = currentIndex
+        player.setMediaItems(restore, restoreIndex, 0); player.prepare()
+        publish(player)
+    } }
+
+    private fun snapshotQueue(player: Player) {
+        val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
+        if (items.isNotEmpty()) { previousQueue = items; previousIndex = player.currentMediaItemIndex.coerceAtLeast(0) }
+    }
 
     private fun publish(player: Player) {
         if (loopRange != null && player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackService.KEY_TRACK_ID) != loopTrackId) { loopRange = null; loopTrackId = null }
         mutableState.value = PlaybackState(
             true, player.currentMediaItem, player.isPlaying, player.currentPosition.coerceAtLeast(0),
             player.duration.takeIf { it > 0 } ?: 0, (0 until player.mediaItemCount).map(player::getMediaItemAt),
-            player.repeatMode, player.shuffleModeEnabled, loopRange,
+            player.repeatMode, player.shuffleModeEnabled, loopRange, previousQueue.isNotEmpty(),
         )
     }
 }

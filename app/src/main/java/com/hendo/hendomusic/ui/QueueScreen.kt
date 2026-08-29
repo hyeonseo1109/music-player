@@ -52,7 +52,7 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
         TopAppBar(
             title = { Text("현재 재생목록") },
             navigationIcon = { IconButton(back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } },
-            actions = { TextButton(viewModel.player::clear) { Text("비우기") } },
+            actions = { if (state.hasPreviousQueue) TextButton(viewModel.player::restorePreviousQueue) { Text("이전 불러오기") }; TextButton(viewModel.player::clear) { Text("비우기") } },
         )
         Text(
             "현재 ${state.current?.let { current -> localQueue.indexOfFirst { it.mediaId == current.mediaId } + 1 } ?: 0} / ${localQueue.size}곡",

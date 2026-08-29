@@ -134,6 +134,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createAlbum(name: String) = viewModelScope.launch { dao.insertAlbum(UserAlbumEntity(name = name, sortOrder = uiState.value.albums.size)) }
     fun createFolder(name: String) = viewModelScope.launch { dao.insertFolder(AlbumFolderEntity(name = name, sortOrder = uiState.value.folders.size)) }
     fun reorderAlbums(ids: List<Long>, folderId: Long? = null) = viewModelScope.launch { dao.reorderAlbums(ids, folderId) }
+    fun reorderAlbumTracks(albumId: Long, ids: List<String>) = viewModelScope.launch { dao.reorderAlbumTracks(albumId, ids) }
+    fun reorderFolders(ids: List<Long>) = viewModelScope.launch { dao.reorderFolders(ids) }
     fun createFolderFromAlbums(name: String, firstId: Long, secondId: Long) = viewModelScope.launch {
         dao.createFolderWithAlbums(name, listOf(firstId, secondId), uiState.value.folders.size)
         normalizeRootAlbums()
@@ -153,7 +155,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         normalizeRootAlbums()
     }
     private suspend fun normalizeRootAlbums() { dao.reorderAlbums(dao.rootAlbums().map { it.id }, null) }
-    fun addToAlbum(albumId: Long, trackId: String) = viewModelScope.launch { dao.addAlbumTrack(AlbumTrackEntity(albumId, trackId, Int.MAX_VALUE)) }
+    /** New songs always go to the end of an album; a later drag is the only way to reorder them. */
+    fun addToAlbum(albumId: Long, trackId: String) = viewModelScope.launch {
+        dao.addAlbumTrack(AlbumTrackEntity(albumId, trackId, dao.nextAlbumTrackSortOrder(albumId)))
+    }
     fun importPlaylistUri(uri: Uri) = viewModelScope.launch {
         mutablePlaylistImport.value = runCatching {
             val resolver = getApplication<Application>().contentResolver

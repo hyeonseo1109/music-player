@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.media3.common.Player
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -48,6 +51,7 @@ import com.hendo.hendomusic.lyrics.SyncedLyricLine
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.playback.PlaybackState
 import kotlin.math.roundToLong
+import kotlin.math.abs
 
 @Composable
 fun LuminaraApp(
@@ -89,18 +93,45 @@ fun LuminaraApp(
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
-            composable("albums") { AlbumOrganizerScreen(ui, viewModel, choosePlaylist, exportPlaylist) { id -> nav.navigate("album/$id") } }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel) { id -> nav.navigate("album/$id") } }
             composable("album/{albumId}") { back ->
                 val id = back.arguments?.getString("albumId")?.toLongOrNull()
                 val album = ui.albums.firstOrNull { it.id == id }
                 val tracks by remember(id) { if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else viewModel.observeAlbumTracks(id) }.collectAsStateWithLifecycle(emptyList())
+                val localTracks = remember { mutableStateListOf<TrackEntity>() }
+                var draggedTrackId by remember { mutableStateOf<String?>(null) }
+                var dragOffset by remember { mutableFloatStateOf(0f) }
+                val haptics = LocalHapticFeedback.current
+                LaunchedEffect(tracks, draggedTrackId) { if (draggedTrackId == null && localTracks.map { it.id } != tracks.map { it.id }) { localTracks.clear(); localTracks.addAll(tracks) } }
                 Column(Modifier.fillMaxSize()) {
                     TopAppBar({ Text(album?.name ?: "내 앨범") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } })
                     if (tracks.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 앨범에 담긴 곡이 없습니다.") }
-                    else LazyColumn { items(tracks, key = { it.id }) { track -> MusicRow(track, false, { viewModel.play(track, tracks) }, {}, {}) } }
+                    else LazyColumn {
+                        itemsIndexed(localTracks, key = { _, track -> track.id }) { _, track ->
+                            val dragging = draggedTrackId == track.id
+                            Row(Modifier.fillMaxWidth().zIndex(if (dragging) 1f else 0f).graphicsLayer { translationY = if (dragging) dragOffset else 0f }.pointerInput(track.id, localTracks.size) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { draggedTrackId = track.id; dragOffset = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                    onDragCancel = { draggedTrackId = null; dragOffset = 0f },
+                                    onDragEnd = { draggedTrackId = null; dragOffset = 0f; id?.let { viewModel.reorderAlbumTracks(it, localTracks.map { t -> t.id }) } },
+                                    onDrag = { change, amount ->
+                                        change.consume(); dragOffset += amount.y
+                                        if (abs(dragOffset) > 48.dp.toPx()) {
+                                            val from = localTracks.indexOfFirst { it.id == track.id }
+                                            val to = (from + if (dragOffset > 0) 1 else -1).coerceIn(localTracks.indices)
+                                            if (from != to) { localTracks.add(to, localTracks.removeAt(from)); dragOffset = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+                                        }
+                                    },
+                                )
+                            }, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.DragHandle, "길게 눌러 순서 변경", Modifier.padding(start = 8.dp))
+                                MusicRow(track, false, { viewModel.play(track, localTracks) }, {}, {})
+                            }
+                        }
+                    }
                 }
             }
-            composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, onFloatingChanged) }
+            composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, choosePlaylist, exportPlaylist, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
             composable("nowLyrics/{trackId}") { back ->
                 NowPlayingLyricsScreen(back.arguments?.getString("trackId").orEmpty(), playback.positionMs, viewModel) { nav.popBackStack() }
@@ -432,8 +463,9 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 @Composable private fun SpecialAlbum(name: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector) = ListItem(headlineContent = { Text(name, fontWeight = FontWeight.SemiBold) }, supportingContent = { Text("${count}곡 · 자동 앨범") }, leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) })
 @Composable private fun NameDialog(title: String, done: (String?) -> Unit) { var value by remember { mutableStateOf("") }; AlertDialog({ done(null) }, { TextButton({ if(value.isNotBlank()) done(value.trim()) }) { Text("만들기") } }, dismissButton = { TextButton({ done(null) }) { Text("취소") } }, title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) }) }
 
-@Composable private fun SettingsScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, requestMedia: () -> Unit, requestOverlay: () -> Unit, chooseTree: () -> Unit, floatingChanged: (Boolean) -> Unit) {
+@Composable private fun SettingsScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, requestMedia: () -> Unit, requestOverlay: () -> Unit, chooseTree: () -> Unit, choosePlaylist: () -> Unit, exportPlaylist: (UserAlbumEntity) -> Unit, floatingChanged: (Boolean) -> Unit) {
     val context = LocalContext.current
+    var exportSheet by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { TopAppBar({ Text("설정", fontWeight = FontWeight.Bold) }) }
         item { Section("라이브러리"); Choice("전체 음악 검색", ui.settings.scanMode == ScanMode.MEDIA_STORE) { vm.setScanMode(ScanMode.MEDIA_STORE) }; Choice("선택 폴더만 검색", ui.settings.scanMode == ScanMode.SELECTED_FOLDERS) { vm.setScanMode(ScanMode.SELECTED_FOLDERS) }; SettingLine(Icons.Default.FolderOpen, "음악 폴더 추가", "${ui.settings.treeUris.size}개 폴더 등록", chooseTree); SettingLine(Icons.Default.Refresh, "음악 라이브러리 다시 검색", ui.scanMessage.orEmpty(), vm::scan) }
@@ -442,8 +474,10 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         item { Section("재생 기록"); SwitchLine("많이 들은 곡 기록", ui.settings.trackListening, vm::setTrackListening) }
         item { Section("화면"); SwitchLine("앱을 보는 동안 화면 켜기", ui.settings.keepScreenOn, vm::setKeepScreenOn) }
         item { Section("권한"); SettingLine(Icons.Default.AudioFile, "음악 및 알림 권한", if(hasAudioPermission(context)) "허용됨" else "권한 필요", requestMedia); SettingLine(Icons.Default.PictureInPicture, "다른 앱 위에 표시", if(Settings.canDrawOverlays(context)) "허용됨" else "권한 필요", requestOverlay) }
+        item { Section("내 앨범 데이터"); SettingLine(Icons.Default.Sync, "삼성뮤직 공개 재생목록 동기화", "Android에서 공개한 재생목록을 내 앨범으로 가져옵니다", vm::importPublicPlaylists); SettingLine(Icons.Default.FileUpload, "내 앨범 가져오기", "M3U / M3U8 / PLS 파일 선택", choosePlaylist); SettingLine(Icons.Default.FileDownload, "내 앨범 내보내기", "선택한 내 앨범을 M3U로 저장") { exportSheet = true } }
         item { Section("데이터"); SettingLine(Icons.Default.FileUpload, "LRC·앱 데이터 백업/복원", "가사 화면의 LRC 가져오기/내보내기와 Android 자동 백업 지원") {} }
     }
+    if (exportSheet) AlertDialog(onDismissRequest = { exportSheet = false }, title = { Text("내보낼 앨범") }, text = { if (ui.albums.isEmpty()) Text("내보낼 사용자 앨범이 없습니다.") else LazyColumn(Modifier.heightIn(max = 360.dp)) { items(ui.albums, key = { it.id }) { album -> ListItem({ Text(album.name) }, modifier = Modifier.clickable { exportPlaylist(album); exportSheet = false }) } } }, confirmButton = { TextButton({ exportSheet = false }) { Text("닫기") } })
 }
 
 @Composable private fun Section(text: String) { Text(text, Modifier.padding(start = 20.dp, top = 22.dp, bottom = 6.dp), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }

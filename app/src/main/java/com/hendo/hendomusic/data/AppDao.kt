@@ -53,6 +53,11 @@ interface AppDao {
     @Transaction suspend fun reorderAlbums(ids: List<Long>, folderId: Long?) { ids.forEachIndexed { index, id -> moveAlbum(id, folderId, index) } }
     @Query("DELETE FROM user_albums WHERE id=:id") suspend fun deleteAlbum(id: Long)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun addAlbumTrack(item: AlbumTrackEntity)
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM album_tracks WHERE albumId=:albumId") suspend fun nextAlbumTrackSortOrder(albumId: Long): Int
+    @Query("UPDATE album_tracks SET sortOrder=:sortOrder WHERE albumId=:albumId AND trackId=:trackId") suspend fun updateAlbumTrackOrder(albumId: Long, trackId: String, sortOrder: Int)
+    @Transaction suspend fun reorderAlbumTracks(albumId: Long, trackIds: List<String>) {
+        trackIds.distinct().forEachIndexed { index, trackId -> updateAlbumTrackOrder(albumId, trackId, index) }
+    }
     @Query("DELETE FROM album_tracks WHERE albumId=:albumId") suspend fun clearAlbumTracks(albumId: Long)
     @Transaction suspend fun createAlbumWithTracks(album: UserAlbumEntity, trackIds: List<String>): Long {
         val albumId = insertAlbum(album)
@@ -72,6 +77,8 @@ interface AppDao {
     fun observeAlbumTracks(albumId: Long): Flow<List<TrackEntity>>
     @Insert suspend fun insertFolder(folder: AlbumFolderEntity): Long
     @Query("SELECT * FROM album_folders ORDER BY sortOrder") fun observeFolders(): Flow<List<AlbumFolderEntity>>
+    @Query("UPDATE album_folders SET sortOrder=:sortOrder WHERE id=:id") suspend fun updateFolderOrder(id: Long, sortOrder: Int)
+    @Transaction suspend fun reorderFolders(ids: List<Long>) { ids.distinct().forEachIndexed { index, id -> updateFolderOrder(id, index) } }
     @Query("UPDATE album_folders SET name=:name WHERE id=:id") suspend fun renameFolder(id: Long, name: String)
     @Query("DELETE FROM album_folders WHERE id=:id") suspend fun deleteFolderRow(id: Long)
     @Query("SELECT * FROM user_albums WHERE folderId=:folderId ORDER BY sortOrder") suspend fun albumsInFolder(folderId: Long): List<UserAlbumEntity>
