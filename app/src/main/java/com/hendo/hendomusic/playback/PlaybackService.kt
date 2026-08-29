@@ -27,6 +27,7 @@ import com.hendo.hendomusic.data.displayArtworkUri
 import com.hendo.hendomusic.domain.LoopRange
 import com.hendo.hendomusic.domain.LoopRangePolicy
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 @UnstableApi
@@ -246,6 +247,7 @@ class PlaybackService : MediaSessionService() {
         if (!countedCurrentPlay && currentId != null && PlayCountPolicy.qualifies(listenedMs, duration)) {
             countedCurrentPlay = true
             scope.launch(Dispatchers.IO) {
+                if (!(application as LuminaraApplication).container.preferences.settings.first().trackListening) return@launch
                 val timestamp = System.currentTimeMillis()
                 dao.countPlay(currentId, timestamp)
                 dao.insertHistory(PlaybackHistoryEntity(trackId = currentId, playedAt = timestamp, listenedMs = listenedMs))

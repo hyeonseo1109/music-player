@@ -98,6 +98,7 @@ class FloatingLyricsService : Service() {
     private fun collapseLater() { root?.postDelayed({ if(expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }, 5_000) }
     private fun refresh() {
         val player = controller ?: return
+        if (!player.isPlaying) { stopSelf(); return }
         root?.findViewById<TextView>(TITLE_ID)?.text = player.mediaMetadata.title?.toString() ?: "HendoMusic"
         val trackId = player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackService.KEY_TRACK_ID)
         if (trackId != currentTrackId) {

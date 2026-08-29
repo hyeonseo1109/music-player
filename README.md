@@ -11,6 +11,8 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - Audio Focus 및 audio-becoming-noisy에 의한 유선·USB·Bluetooth 출력 분리 시 일시정지
 - 전체 곡, 실시간/한글 초성 검색, 정렬 저장, MusicRow/곡 메뉴. 길게 눌러 한 곡 또는 여러 곡을 선택하고 선택한 곡만 큐로 만드는 선택 재생
 - Now Playing의 좋아요·내 앨범 추가·현재 재생목록, 앨범커버 아래 현재/다음 두 줄 가사와 탭 가사 전환, 가사 모드 진입 시 현재 싱크를 자동 추적하고 사용자가 스크롤한 뒤에만 그 위치를 유지하는 가사 모드, 화면 하단 고정 seek/이전/재생/다음/shuffle 및 접어서 여는 repeat/A-B 패널, MediaController와 동기화되는 Mini Player
+- Now Playing 가사 줄 탭 seek, 앨범커버/2줄 미리보기와 가사 헤더의 양방향 모드 전환, 재생 컨트롤 위의 좋아요·내 앨범 추가·큐 바로가기, 선택 곡의 재생·큐 추가·내 앨범 일괄 추가
+- 가사 검색 진입 즉시 제목/아티스트로 검색하고, 싱크 없음 표기·통일된 전체 가사 확인·적용 동작을 제공. 많이 들은 곡은 설정에서 집계와 앨범 표시를 함께 끌 수 있음
 - PlaybackService가 관리하는 직접 A-B 구간 반복과 현재 위치 기준 이전 3초/5초/10초 즉시 반복
 - drag handle로 순서를 바로 바꾸는 실제 Media3 playlist, Play Next, Room 큐·현재 곡·위치·repeat·shuffle 저장/복원
 - 삭제된 곡을 제외한 안전한 큐 복원, 재실행 시 자동 재생하지 않는 paused 복원

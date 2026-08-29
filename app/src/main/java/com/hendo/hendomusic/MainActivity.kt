@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         lifecycleScope.launch {
             val settings = (application as LuminaraApplication).container.preferences.settings.first()
-            if (settings.floatingLyrics && Settings.canDrawOverlays(this@MainActivity)) startService(Intent(this@MainActivity, FloatingLyricsService::class.java))
+            if (settings.floatingLyrics && viewModel.player.state.value.isPlaying && Settings.canDrawOverlays(this@MainActivity)) startService(Intent(this@MainActivity, FloatingLyricsService::class.java))
         }
         super.onStop()
     }

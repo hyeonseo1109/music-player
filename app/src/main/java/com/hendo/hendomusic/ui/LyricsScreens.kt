@@ -36,6 +36,7 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
     var preview by remember { mutableStateOf<LyricsSearchResult?>(null) }
     var reportTarget by remember { mutableStateOf<LyricsSearchResult?>(null) }
     val community by viewModel.communityAction.collectAsStateWithLifecycle()
+    LaunchedEffect(track.id) { viewModel.resetLyricsSearch(); viewModel.searchLyrics(title, artist) }
     Scaffold(topBar = { TopAppBar({ Text("가사 검색") }, navigationIcon = { IconButton(back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("곡 제목") }, singleLine = true)
@@ -52,7 +53,7 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
                     items(value.results, key = { "${it.source}:${it.id}" }) { result ->
                         Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable { preview = result }, shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
                             Column(Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) { Text(result.source, Modifier.weight(1f), fontWeight = FontWeight.Bold); AssistChip({}, { Text(if (result.synced) "싱크 있음" else "Plain") }); if (result.votes > 0) Text("추천 ${result.votes}", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Text(result.source, Modifier.weight(1f), fontWeight = FontWeight.Bold); AssistChip({}, { Text(if (result.synced) "싱크 있음" else "싱크없음") }); if (result.votes > 0) Text("추천 ${result.votes}", Modifier.padding(start = 8.dp)) }
                                 result.trackTitle?.let { title -> Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) }
                                 listOfNotNull(result.trackArtist, result.album, result.durationMs?.let(::formatDuration)).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), style = MaterialTheme.typography.labelMedium) }
                                 Text(result.preview, maxLines = 4, style = MaterialTheme.typography.bodyMedium)
@@ -65,9 +66,9 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
         }
     }
     preview?.let { result -> AlertDialog(
-        onDismissRequest = { preview = null }, title = { Text("${result.source} 가사 전체 확인") },
+        onDismissRequest = { preview = null }, title = { Text("전체 가사 확인") },
         text = { LazyColumn(Modifier.heightIn(max = 430.dp)) { item { Text(result.plainText) } } },
-        confirmButton = { TextButton({ viewModel.stageLyrics(result); preview = null; edit() }) { Text("편집 화면에서 검토") } },
+        confirmButton = { TextButton({ viewModel.stageLyrics(result); preview = null; edit() }) { Text("적용") } },
         dismissButton = { Row {
             if (result.source.startsWith("Luminara")) {
                 TextButton({ viewModel.voteLyrics(result.id) }) { Text("추천") }
@@ -136,7 +137,6 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
         }
     }, enabled = text.isNotBlank()) { Text("저장") } }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (staged != null) AssistChip({}, { Text("${staged!!.source}에서 local copy로 가져옴") }, Modifier.padding(horizontal = 16.dp))
             if (synced.isNotEmpty()) Text("싱크 ${synced.size}줄 유지 중", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary)
             OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().weight(1f).padding(16.dp), placeholder = { Text("가사를 붙여넣거나 직접 입력하세요") })
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
