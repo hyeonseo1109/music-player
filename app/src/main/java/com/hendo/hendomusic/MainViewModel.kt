@@ -8,6 +8,7 @@ import com.hendo.hendomusic.artwork.ArtworkRepository
 import com.hendo.hendomusic.artwork.ArtworkSearchState
 import com.hendo.hendomusic.data.*
 import com.hendo.hendomusic.library.KoreanSearch
+import com.hendo.hendomusic.library.PlaylistImportCodec
 import com.hendo.hendomusic.library.ScanResult
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
@@ -44,6 +45,12 @@ sealed interface LrcImportState {
     data class Error(val message: String) : LrcImportState
 }
 
+sealed interface PlaylistImportState {
+    data object Idle : PlaylistImportState
+    data class Success(val message: String) : PlaylistImportState
+    data class Error(val message: String) : PlaylistImportState
+}
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as LuminaraApplication).container
     private val dao = container.database.dao()
@@ -64,6 +71,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val stagedLyrics = mutableStagedLyrics.asStateFlow()
     private val mutableLrcImport = MutableStateFlow<LrcImportState>(LrcImportState.Idle)
     val lrcImport = mutableLrcImport.asStateFlow()
+    private val mutablePlaylistImport = MutableStateFlow<PlaylistImportState>(PlaylistImportState.Idle)
+    val playlistImport = mutablePlaylistImport.asStateFlow()
     private val query = MutableStateFlow("")
     private val scanState = MutableStateFlow<Pair<Boolean, String?>>(false to null)
     val uiState: StateFlow<MainUiState> = combine(
@@ -143,6 +152,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     private suspend fun normalizeRootAlbums() { dao.reorderAlbums(dao.rootAlbums().map { it.id }, null) }
     fun addToAlbum(albumId: Long, trackId: String) = viewModelScope.launch { dao.addAlbumTrack(AlbumTrackEntity(albumId, trackId, Int.MAX_VALUE)) }
+    fun importPlaylistUri(uri: Uri) = viewModelScope.launch {
+        mutablePlaylistImport.value = runCatching {
+            val resolver = getApplication<Application>().contentResolver
+            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?: "가져온 재생목록.m3u"
+            val contents = resolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: error("재생목록 파일을 읽을 수 없습니다.")
+            val playlist = PlaylistImportCodec.parse(name, contents)
+            require(playlist.entries.isNotEmpty()) { "곡이 없는 재생목록입니다." }
+            val byFileName = uiState.value.tracks.associateBy { it.fileName.lowercase() }
+            val trackIds = playlist.entries.mapNotNull { byFileName[PlaylistImportCodec.fileName(it).lowercase()]?.id }.distinct()
+            require(trackIds.isNotEmpty()) { "현재 음악 보관함과 일치하는 곡이 없습니다. 먼저 전체 곡을 새로고침해 주세요." }
+            dao.createAlbumWithTracks(UserAlbumEntity(name = playlist.name, sortOrder = uiState.value.albums.count { it.folderId == null }), trackIds)
+            val skipped = playlist.entries.size - trackIds.size
+            PlaylistImportState.Success("${playlist.name} 앨범에 ${trackIds.size}곡을 가져왔습니다" + if (skipped > 0) " · ${skipped}곡은 찾지 못했습니다" else "")
+        }.getOrElse { PlaylistImportState.Error(it.localizedMessage ?: "재생목록 가져오기에 실패했습니다.") }
+    }
+    fun resetPlaylistImport() { mutablePlaylistImport.value = PlaylistImportState.Idle }
     fun observeAlbumTracks(albumId: Long) = dao.observeAlbumTracks(albumId)
     fun startSyncPlayback(trackId: String) = viewModelScope.launch {
         dao.track(trackId)?.let { play(it) }

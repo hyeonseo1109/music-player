@@ -52,6 +52,13 @@ interface AppDao {
     @Transaction suspend fun reorderAlbums(ids: List<Long>, folderId: Long?) { ids.forEachIndexed { index, id -> moveAlbum(id, folderId, index) } }
     @Query("DELETE FROM user_albums WHERE id=:id") suspend fun deleteAlbum(id: Long)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun addAlbumTrack(item: AlbumTrackEntity)
+    @Transaction suspend fun createAlbumWithTracks(album: UserAlbumEntity, trackIds: List<String>): Long {
+        val albumId = insertAlbum(album)
+        trackIds.distinct().forEachIndexed { index, trackId ->
+            addAlbumTrack(AlbumTrackEntity(albumId, trackId, index))
+        }
+        return albumId
+    }
     @Query("SELECT tracks.* FROM tracks INNER JOIN album_tracks ON tracks.id=album_tracks.trackId WHERE album_tracks.albumId=:albumId ORDER BY album_tracks.sortOrder")
     fun observeAlbumTracks(albumId: Long): Flow<List<TrackEntity>>
     @Insert suspend fun insertFolder(folder: AlbumFolderEntity): Long

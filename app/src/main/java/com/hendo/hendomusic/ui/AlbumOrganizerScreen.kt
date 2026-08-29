@@ -27,10 +27,11 @@ import com.hendo.hendomusic.MainUiState
 import com.hendo.hendomusic.MainViewModel
 import com.hendo.hendomusic.data.AlbumFolderEntity
 import com.hendo.hendomusic.data.UserAlbumEntity
+import com.hendo.hendomusic.PlaylistImportState
 import kotlin.math.roundToInt
 
 @Composable
-fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
+fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlaylist: () -> Unit) {
     var createAlbum by remember { mutableStateOf(false) }
     var createFolder by remember { mutableStateOf(false) }
     var folderSheet by remember { mutableStateOf<AlbumFolderEntity?>(null) }
@@ -42,6 +43,17 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
     var dragY by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
+    val playlistImport by viewModel.playlistImport.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(playlistImport) {
+        val message = when (val state = playlistImport) {
+            is PlaylistImportState.Success -> state.message
+            is PlaylistImportState.Error -> state.message
+            PlaylistImportState.Idle -> null
+        }
+        message?.let { snackbar.showSnackbar(it); viewModel.resetPlaylistImport() }
+    }
 
     LaunchedEffect(ui.albums, draggedId) {
         if (draggedId == null) {
@@ -54,6 +66,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
             title = { Text("내 앨범") },
             actions = {
                 IconButton({ createFolder = true }) { Icon(Icons.Default.CreateNewFolder, "빈 폴더 만들기") }
+                IconButton(choosePlaylist) { Icon(Icons.Default.FileUpload, "삼성뮤직 재생목록 가져오기") }
                 IconButton({ createAlbum = true }) { Icon(Icons.Default.Add, "앨범 만들기") }
             },
         )
@@ -63,6 +76,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Box(Modifier.weight(1f)) {
         LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { specialTracks = "좋아요한 곡" to ui.tracks.filter { it.isFavorite } }; SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { specialTracks = "많이 들은 곡" to ui.tracks.filter { it.playCount > 0 }.sortedByDescending { it.playCount } } }
             items(ui.folders, key = { "folder:${it.id}" }) { folder ->
@@ -100,6 +114,8 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel) {
                     },
                 )
             }
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
     }
 

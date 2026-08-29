@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
             val lrcPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 uri?.let(viewModel::importLrcUri)
             }
+            val playlistPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                uri?.let(viewModel::importPlaylistUri)
+            }
             val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
             var onboardingPermissionResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
             val onboardingPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -98,6 +101,7 @@ class MainActivity : ComponentActivity() {
                     },
                     chooseTree = { treePicker.launch(null) },
                     chooseLrc = { lrcPicker.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
+                    choosePlaylist = { playlistPicker.launch(arrayOf("audio/x-mpegurl", "application/x-mpegurl", "audio/mpegurl", "text/plain", "application/octet-stream")) },
                     onFloatingChanged = { enabled ->
                         viewModel.setFloating(enabled)
                         if (enabled && Settings.canDrawOverlays(this)) startService(Intent(this, FloatingLyricsService::class.java))
