@@ -25,7 +25,7 @@ class AutoMetadataEnricher(
     private val retryAfterMs = ConcurrentHashMap<String, Long>()
     private val retryDelayMs = 5 * 60_000L
 
-    suspend fun enrichMissing(limit: Int = 4) {
+    suspend fun enrichMissing(limit: Int = 12) {
         (dao.artworkEnrichmentCandidates(limit) + dao.lyricEnrichmentCandidates(limit))
             .distinctBy { it.id }
             .take(limit)

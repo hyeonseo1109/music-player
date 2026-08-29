@@ -21,7 +21,7 @@ globalStyle("body", {
   WebkitFontSmoothing: "antialiased",
   MozOsxFontSmoothing: "grayscale",
   backgroundColor: "white",
-  color: "black",
+  color: "white",
   lineHeight: 1.5,
   // 배경 이미지 설정 시
   // backgroundImage: "url('/background.jpeg')",

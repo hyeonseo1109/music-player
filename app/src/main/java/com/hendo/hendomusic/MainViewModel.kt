@@ -84,7 +84,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         MainUiState(tracks, sorted, settings, q, scan.first, scan.second, albums, folders)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MainUiState())
 
-    init { viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichMissing(limit = 2) } }
+    // Warm a practical batch on launch so metadata appears without the user opening a search UI.
+    // The work remains bounded: playback still has priority and a scan never requests the whole library at once.
+    init { viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichMissing(limit = 12) } }
 
     fun setQuery(value: String) { query.value = value }
     fun scan() = viewModelScope.launch {
