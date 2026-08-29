@@ -14,6 +14,7 @@ import com.hendo.hendomusic.lyrics.SyncedLyricLine
 import com.hendo.hendomusic.lyrics.LyricsSearchResult
 import com.hendo.hendomusic.lyrics.LyricsSearchState
 import com.hendo.hendomusic.network.LrcLibLyricsProvider
+import com.hendo.hendomusic.network.GenieLyricsProvider
 import com.hendo.hendomusic.network.SupabaseLyricsProvider
 import com.hendo.hendomusic.network.CommunityActionState
 import com.hendo.hendomusic.network.CommunityLyricsRepository
@@ -51,6 +52,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val mutableArtworkSearch = MutableStateFlow<ArtworkSearchState>(ArtworkSearchState.Idle)
     val artworkSearch = mutableArtworkSearch.asStateFlow()
     private val lrcLibProvider = LrcLibLyricsProvider()
+    private val genieLyricsProvider = GenieLyricsProvider()
     private val sharedLyricsProvider = SupabaseLyricsProvider()
     private val communityRepository = CommunityLyricsRepository()
     private val mutableCommunityAction = MutableStateFlow<CommunityActionState>(CommunityActionState.Idle)
@@ -179,12 +181,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val communityResult = community.await()
                 val lrcLyrics = lrcResult.getOrDefault(emptyList())
                 val communityLyrics = communityResult.getOrDefault(emptyList())
+                // Manual search mirrors automatic enrichment: only after LRCLIB has no
+                // candidates do we ask Genie for its public synced-lyrics fallback.
+                val genieLyrics = if (lrcLyrics.isEmpty()) {
+                    runCatching { genieLyricsProvider.search(title, artist, "") }.getOrNull()?.let { genie ->
+                        LyricsSearchResult(
+                            id = "genie:${genie.songId}", preview = genie.plainText.take(180), source = "Genie",
+                            synced = true, votes = 0, updatedAt = "", plainText = genie.plainText,
+                            syncedText = LrcCodec.encode(genie.syncedLines.mapIndexed { index, line ->
+                                SyncedLyricLine("genie_${genie.songId}_$index", line.startTimeMs, line.text)
+                            }), trackTitle = genie.title, trackArtist = genie.artist, album = genie.album,
+                        )
+                    }
+                } else null
                 // A disabled or empty optional community provider must not hide a
                 // real LRCLIB request failure as a misleading empty-result state.
-                if (lrcResult.isFailure && communityLyrics.isEmpty()) {
+                if (lrcResult.isFailure && communityLyrics.isEmpty() && genieLyrics == null) {
                     throw lrcResult.exceptionOrNull() ?: error("LRCLIB 가사 검색에 실패했습니다")
                 }
-                lrcLyrics + communityLyrics
+                lrcLyrics + communityLyrics + listOfNotNull(genieLyrics)
             }
             LyricsSearchState.Success(results)
         }.getOrElse { LyricsSearchState.Error(it.localizedMessage ?: "가사 검색에 실패했습니다") }
