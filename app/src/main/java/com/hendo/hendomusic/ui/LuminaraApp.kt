@@ -34,6 +34,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -116,10 +119,26 @@ fun LuminaraApp(
 
 @Composable private fun OnboardingScreen(requestPermission: (String, (Boolean) -> Unit) -> Unit, requestOverlay: () -> Unit, done: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) overlayGranted = Settings.canDrawOverlays(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val audioGranted = hasAudioPermission(context)
+    val notificationGranted = hasNotificationPermission(context)
+    // Persist completion only after every permission from this one-time flow is accepted.
+    // A rejection deliberately leaves onboarding incomplete, so it is shown again next launch.
+    LaunchedEffect(audioGranted, notificationGranted, overlayGranted) {
+        if (audioGranted && notificationGranted && overlayGranted) done()
+    }
     val initialStep = remember {
         when {
-            !hasAudioPermission(context) -> 0
-            Build.VERSION.SDK_INT >= 33 && !hasNotificationPermission(context) -> 1
+            !audioGranted -> 0
+            !notificationGranted -> 1
             else -> 2
         }
     }
@@ -151,7 +170,6 @@ fun LuminaraApp(
                 }
             }, Modifier.fillMaxWidth().height(54.dp)) { Text(if (step == 2) "설정하고 시작" else "권한 요청 후 다음") }
             if (permissionDenied) Text("권한을 허용해야 이 단계를 진행할 수 있습니다.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
-            if (step == 2) TextButton(onClick = done, Modifier.align(Alignment.CenterHorizontally)) { Text("나중에 설정") }
         }
     } }
 }
