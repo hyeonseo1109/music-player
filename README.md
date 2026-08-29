@@ -18,7 +18,7 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - 삼성뮤직 연동: Android 공용 MediaStore에 공개된 재생목록은 동기화 버튼으로 자동 가져오고, 삼성뮤직의 내보낸 재생목록 파일(`.m3u`, `.m3u8`, `.pls`)도 파일 선택기로 가져온다. HendoMusic 내 앨범은 표준 `.m3u`로 내보내 삼성뮤직에서 가져올 수 있다. 원본 음악 파일은 복사하지 않으며, 파일 가져오기 때 찾지 못한 곡 수를 결과로 표시
 - 로컬 일반/싱크 가사, LRCLIB + HendoMusic 공유 가사 검색, 전체 미리보기 → local copy 편집 → 저장, 직접 입력, Android 파일 선택기를 통한 LRC 가져오기
 - 싱크 줄 재지정, 이전/다음 줄, ±3초 seek, 전체 offset ±100/500/1000ms
-- 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 고정 폭 안 줄바꿈과 현재 싱크 줄 강조, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
+- 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 가사 글자 크기의 절반인 작은 곡명 헤더, 고정 폭 안 줄바꿈과 현재 싱크 줄 강조, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
 - Photo Picker 또는 iTunes 검색 결과 → 1:1 이동/확대 crop → 미리보기/적용. 원격 다운로드의 `file://` 임시 이미지도 crop 저장 경로에서 지원하며, iTunes artwork grid는 loading/empty/error/retry를 제공
 - LRCLIB 수동 가사 검색은 `HendoMusic/1.0 (Android)` User-Agent로 Cloudflare 520을 피하고, 후보별 제목·아티스트·앨범·길이·싱크 여부와 전체 가사 미리보기를 제공
 - 곡 metadata 기반 iTunes/LRCLIB high-confidence 자동 enrichment와 LRCLIB 미일치 시 Genie 공개 검색/동기 가사 fallback. 앱 시작 bounded 12곡 배치, 현재 재생 곡 우선, 재스캔 뒤 background 배치로 처리하며 전체 라이브러리를 한꺼번에 요청하지 않음. Now Playing은 Room Flow를 관찰하므로 background 결과가 저장되면 열린 가사 화면도 즉시 갱신

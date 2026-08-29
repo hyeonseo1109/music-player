@@ -70,7 +70,7 @@ class FloatingLyricsService : Service() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(22)
             background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 28f; setColor(Color.argb((settings.floatingAlpha * 255).toInt(), 14, 10, 22)) }
-            addView(TextView(context).apply { id = TITLE_ID; setTextColor(Color.WHITE); textSize = settings.floatingFontSize.toFloat(); gravity = Gravity.CENTER; text = "HendoMusic" })
+            addView(TextView(context).apply { id = TITLE_ID; setTextColor(Color.WHITE); textSize = settings.floatingFontSize / 2f; gravity = Gravity.CENTER; text = "HendoMusic" })
             addView(TextView(context).apply { id = LYRIC_ID; setTextColor(Color.WHITE); textSize = (settings.floatingFontSize + 1).toFloat(); gravity = Gravity.CENTER; maxLines = floatingLineCount; text = "가사를 불러올 수 없습니다." })
             setOnTouchListener(DragTouchListener())
             setOnClickListener { if (!expanded) expandControls() }
