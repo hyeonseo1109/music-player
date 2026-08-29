@@ -52,6 +52,7 @@ import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.playback.PlaybackState
 import kotlin.math.roundToLong
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 
 @Composable
 fun LuminaraApp(
@@ -253,7 +254,9 @@ fun LuminaraApp(
         if (ui.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
         ui.scanMessage?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall) }
         if (!ui.scanning && ui.tracks.isEmpty()) EmptyLibrary(vm::scan)
-        else LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track ->
+        else Box(Modifier.weight(1f)) {
+            val listState = rememberLazyListState()
+            LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 12.dp)) { items(ui.visibleTracks, key = { it.id }) { track ->
             MusicRow(
                 track = track,
                 selected = track.id in selectedIds,
@@ -261,11 +264,22 @@ fun LuminaraApp(
                 select = { toggleSelection(track) },
                 menu = { menuTrack = track },
             )
-        } }
+            } }
+            if (ui.settings.sort == "TITLE") NameIndexRail(ui.visibleTracks, listState)
+        }
     }
     menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
     if (selectedAlbumPicker) AlertDialog(onDismissRequest = { selectedAlbumPicker = false }, title = { Text("선택한 곡을 내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ selectedTracks.forEach { vm.addToAlbum(album.id, it.id) }; selectedIds = emptySet(); selectedAlbumPicker = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); selectedAlbumPicker = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ selectedAlbumPicker = false }) { Text("취소") } })
 }
+
+@Composable private fun BoxScope.NameIndexRail(tracks: List<TrackEntity>, state: androidx.compose.foundation.lazy.LazyListState) {
+    val scope = rememberCoroutineScope()
+    val letters = listOf("#", "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "🌐")
+    Column(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp)) {
+        letters.forEach { letter -> Text(letter, Modifier.clickable { val i = tracks.indexOfFirst { indexLabel(it.title) == letter }; if (i >= 0) scope.launch { state.animateScrollToItem(i) } }.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall) }
+    }
+}
+private fun indexLabel(title: String): String { val c = title.trim().firstOrNull() ?: return "#"; return when { c.isDigit() || !c.isLetter() -> "#"; c in 'A'..'Z' || c in 'a'..'z' -> c.uppercaseChar().toString(); c in '가'..'깋' -> "ㄱ"; c in '나'..'닣' -> "ㄴ"; c in '다'..'딯' -> "ㄷ"; c in '라'..'맇' -> "ㄹ"; c in '마'..'밓' -> "ㅁ"; c in '바'..'빟' -> "ㅂ"; c in '사'..'앃' -> "ㅅ"; c in '아'..'잏' -> "ㅇ"; c in '자'..'짛' -> "ㅈ"; c in '차'..'칳' -> "ㅊ"; c in '카'..'킿' -> "ㅋ"; c in '타'..'팋' -> "ㅌ"; c in '파'..'핗' -> "ㅍ"; c in '하'..'힣' -> "ㅎ"; else -> "🌐" } }
 
 private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; "PLAYED" -> "최근 들은 순"; "COUNT" -> "많이 들은 순"; else -> "이름 순" }
 
