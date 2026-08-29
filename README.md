@@ -87,7 +87,7 @@ USER > EMBEDDED > AUTO_SEARCH > PLACEHOLDER
 USER > AUTO_SEARCH > NONE
 ```
 
-`USER`는 직접 입력·수정, LRC import, 사용자가 검색 결과를 선택한 가사입니다. 수동 검색은 LRCLIB와 설정된 경우 HendoMusic 공유 가사를 함께 표시하며, LRCLIB 후보가 없으면 Genie 공개 동기 가사 fallback도 결과 목록에 표시해 사용자가 선택할 수 있습니다. 자동 enrichment는 먼저 LRCLIB 후보 중 정규화한 title과 artist가 일치하고 음원 길이가 8초 이내인 synced 결과를 사용합니다. 여기에 맞는 LRCLIB 결과가 없을 때만 Genie의 `div.search_song tr.list` 공개 검색 결과에서 정규화한 곡명·가수가 정확히 일치하는 곡을 찾고, HTTPS 동기 가사 payload의 숫자 millisecond key를 정렬해 `AUTO_GENIE`로 저장합니다. background 작업은 가사가 전혀 없는 곡에만 insert하는 Room transaction을 사용하므로 USER 가사는 재스캔·앱 재실행·자동 enrichment로 덮어쓰지 않습니다.
+`USER`는 직접 입력·수정, LRC import, 사용자가 검색 결과를 선택한 가사입니다. 수동 검색은 LRCLIB와 설정된 경우 HendoMusic 공유 가사를 함께 표시하며, LRCLIB 후보가 없으면 Genie 공개 동기 가사 후보(곡명 일치 우선, 최대 5개)도 결과 목록에 표시해 사용자가 선택할 수 있습니다. 자동 enrichment는 먼저 LRCLIB 후보 중 정규화한 title과 artist가 일치하고 음원 길이가 8초 이내인 synced 결과를 사용합니다. 여기에 맞는 LRCLIB 결과가 없을 때만 Genie의 `div.search_song tr.list` 공개 검색 결과에서 정규화한 곡명·가수가 정확히 일치하는 곡을 찾고, HTTPS 동기 가사 payload의 숫자 millisecond key를 정렬해 `AUTO_GENIE`로 저장합니다. background 작업은 가사가 전혀 없는 곡에만 insert하는 Room transaction을 사용하므로 USER 가사는 재스캔·앱 재실행·자동 enrichment로 덮어쓰지 않습니다.
 
 자동 작업은 동일 곡의 in-flight 요청을 합치고, 네트워크 오류 뒤에는 짧은 재시도 지연을 둡니다. 현재 재생 곡 trigger와 background batch가 같은 곡을 동시에 요청하지 않습니다.
 

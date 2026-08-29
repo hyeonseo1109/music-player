@@ -181,10 +181,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val communityResult = community.await()
                 val lrcLyrics = lrcResult.getOrDefault(emptyList())
                 val communityLyrics = communityResult.getOrDefault(emptyList())
-                // Manual search mirrors automatic enrichment: only after LRCLIB has no
-                // candidates do we ask Genie for its public synced-lyrics fallback.
+                // Manual search is user-confirmed, so show a small set of title-matched Genie
+                // candidates when LRCLIB is empty instead of discarding artist-format variants.
                 val genieLyrics = if (lrcLyrics.isEmpty()) {
-                    runCatching { genieLyricsProvider.search(title, artist, "") }.getOrNull()?.let { genie ->
+                    runCatching { genieLyricsProvider.searchManual(title, artist) }.getOrDefault(emptyList()).map { genie ->
                         LyricsSearchResult(
                             id = "genie:${genie.songId}", preview = genie.plainText.take(180), source = "Genie",
                             synced = true, votes = 0, updatedAt = "", plainText = genie.plainText,
@@ -193,13 +193,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }), trackTitle = genie.title, trackArtist = genie.artist, album = genie.album,
                         )
                     }
-                } else null
+                } else emptyList()
                 // A disabled or empty optional community provider must not hide a
                 // real LRCLIB request failure as a misleading empty-result state.
-                if (lrcResult.isFailure && communityLyrics.isEmpty() && genieLyrics == null) {
+                if (lrcResult.isFailure && communityLyrics.isEmpty() && genieLyrics.isEmpty()) {
                     throw lrcResult.exceptionOrNull() ?: error("LRCLIB 가사 검색에 실패했습니다")
                 }
-                lrcLyrics + communityLyrics + listOfNotNull(genieLyrics)
+                lrcLyrics + communityLyrics + genieLyrics
             }
             LyricsSearchState.Success(results)
         }.getOrElse { LyricsSearchState.Error(it.localizedMessage ?: "가사 검색에 실패했습니다") }

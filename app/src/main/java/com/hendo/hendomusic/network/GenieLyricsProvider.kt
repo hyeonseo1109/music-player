@@ -1,5 +1,6 @@
 package com.hendo.hendomusic.network
 
+import android.util.Log
 import com.hendo.hendomusic.metadata.MetadataConfidence
 import com.squareup.moshi.JsonReader
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,23 @@ internal data class GenieSongCandidate(val songId: String, val title: String, va
 
 class GenieLyricsProvider {
     suspend fun search(title: String, artist: String, album: String): GenieLyricsResult? = withContext(Dispatchers.IO) {
+        val candidate = requestCandidates(title, artist).firstOrNull {
+            MetadataConfidence.genieLyricsHigh(title, artist, it.title, it.artist)
+        } ?: return@withContext null
+        lyricsFor(candidate)
+    }
+
+    /** Manual search is intentionally less strict: the user sees and chooses the candidate. */
+    suspend fun searchManual(title: String, artist: String): List<GenieLyricsResult> = withContext(Dispatchers.IO) {
+        val candidates = requestCandidates(title, artist)
+        val normalizedTitle = MetadataConfidence.normalize(title)
+        val titleMatches = candidates.filter { MetadataConfidence.normalize(it.title) == normalizedTitle }
+        val requested = (titleMatches.ifEmpty { candidates }).take(5)
+        Log.d("GenieLyrics", "manual title=$title artist=$artist candidates=${candidates.size} requested=${requested.size}")
+        requested.mapNotNull(::lyricsFor)
+    }
+
+    private fun requestCandidates(title: String, artist: String): List<GenieSongCandidate> {
         val searchUrl = "https://www.genie.co.kr/search/searchMain".toHttpUrl().newBuilder()
             .addQueryParameter("query", "$artist $title")
             .build()
@@ -21,16 +39,18 @@ class GenieLyricsProvider {
             // Genie redirects its Android user-agent endpoint to clear-text mobile HTTP.
             // The desktop endpoint is HTTPS and serves the same public search markup.
             .userAgent(desktopUserAgent).timeout(12_000).get()
-        val candidate = parseCandidates(doc.outerHtml()).firstOrNull {
-            MetadataConfidence.genieLyricsHigh(title, artist, it.title, it.artist)
-        } ?: return@withContext null
+        return parseCandidates(doc.outerHtml())
+    }
+
+    private fun lyricsFor(candidate: GenieSongCandidate): GenieLyricsResult? {
         val lyricUrl = "https://dn.genie.co.kr/app/purchase/get_msl.asp".toHttpUrl().newBuilder()
             .addQueryParameter("songid", candidate.songId)
             .build()
         val lines = parseLines(Jsoup.connect(lyricUrl.toString())
             .userAgent(desktopUserAgent).timeout(12_000).ignoreContentType(true).execute().body())
-        if (lines.isEmpty()) return@withContext null
-        GenieLyricsResult(candidate.songId, candidate.title, candidate.artist, candidate.album, lines.joinToString("\n") { it.text }, lines)
+        return lines.takeIf { it.isNotEmpty() }?.let {
+            GenieLyricsResult(candidate.songId, candidate.title, candidate.artist, candidate.album, it.joinToString("\n") { line -> line.text }, it)
+        }
     }
 
     companion object {
