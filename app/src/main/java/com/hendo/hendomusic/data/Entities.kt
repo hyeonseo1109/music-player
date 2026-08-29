@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 
 /** Persisted provenance is deliberately separate from the display priority. */
 enum class ArtworkSource { USER, EMBEDDED, AUTO_ITUNES }
-enum class LyricsSource { USER_MANUAL, USER_SEARCH, USER_LRC, AUTO_LRCLIB, AUTO_HENDOMUSIC }
+enum class LyricsSource { USER_MANUAL, USER_SEARCH, USER_LRC, AUTO_LRCLIB, AUTO_GENIE, AUTO_HENDOMUSIC }
 
 @Entity(tableName = "tracks", indices = [Index(value = ["uri"], unique = true), Index("title"), Index("artist"), Index("album")])
 data class TrackEntity(

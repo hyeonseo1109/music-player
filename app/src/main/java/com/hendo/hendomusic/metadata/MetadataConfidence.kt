@@ -22,6 +22,10 @@ object MetadataConfidence {
         return sameTitle && sameArtist && closeDuration
     }
 
+    /** Genie has no reliable duration in search results, so require exact normalized title + artist. */
+    fun genieLyricsHigh(title: String, artist: String, candidateTitle: String?, candidateArtist: String?): Boolean =
+        strictMatches(title, candidateTitle) && strictMatches(artist, candidateArtist)
+
     private fun high(title: String, artist: String, album: String, candidateTitle: String?, candidateArtist: String?, candidateAlbum: String?): Boolean {
         val sameArtist = matches(artist, candidateArtist)
         val sameAlbum = matches(album, candidateAlbum)
@@ -33,6 +37,12 @@ object MetadataConfidence {
         val left = normalize(expected)
         val right = normalize(actual.orEmpty())
         return left.length >= 2 && right.length >= 2 && (left == right || left.contains(right) || right.contains(left))
+    }
+
+    private fun strictMatches(expected: String, actual: String?): Boolean {
+        val left = normalize(expected)
+        val right = normalize(actual.orEmpty())
+        return left.length >= 2 && right.length >= 2 && left == right
     }
 
     fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)

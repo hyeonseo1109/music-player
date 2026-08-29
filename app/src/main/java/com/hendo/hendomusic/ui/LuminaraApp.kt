@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
@@ -252,14 +253,30 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     var repeatOptions by remember { mutableStateOf(false) }
     var addAlbumOpen by remember { mutableStateOf(false) }
     var pendingLoopStart by remember(item?.mediaId) { mutableStateOf<Long?>(null) }
+    val configuration = LocalConfiguration.current
+    val compactLandscape = configuration.screenWidthDp > configuration.screenHeightDp
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.KeyboardArrowDown, null) }; if (lyricsMode) { Box(Modifier.clickable { lyricsMode = false }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), 56) }; Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(item?.mediaMetadata?.title?.toString().orEmpty(), maxLines = 1, fontWeight = FontWeight.Bold); Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } } else Text("지금 재생 중", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Box { IconButton({ moreOpen = true }) { Icon(Icons.Default.MoreVert, "더보기") }; DropdownMenu(moreOpen, { moreOpen = false }) { val id = item?.mediaMetadata?.extras?.getString("track_id"); DropdownMenuItem({ Text("곡 정보·앨범 커버 변경") }, { moreOpen = false; id?.let { nav.navigate("metadata/$it") } }); DropdownMenuItem({ Text("가사 검색") }, { moreOpen = false; id?.let { nav.navigate("lyricsSearch/$it") } }); DropdownMenuItem({ Text("가사 직접 입력/수정") }, { moreOpen = false; id?.let { nav.navigate("lyrics/$it") } }); DropdownMenuItem({ Text("가사 싱크 편집") }, { moreOpen = false; id?.let { nav.navigate("sync/$it") } }) } } }
         val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
-        if (!lyricsMode) { Spacer(Modifier.height(24.dp)); Box(Modifier.clickable { lyricsMode = true }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), 292) } }
-        if (lyricsMode) track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = true, modifier = Modifier.weight(1f).fillMaxWidth()) }
-        Spacer(Modifier.height(if (lyricsMode) 12.dp else 28.dp))
-        if (!lyricsMode) { Text(item?.mediaMetadata?.title?.toString() ?: "재생 중인 곡 없음", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Spacer(Modifier.height(20.dp)); Slider(value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { vm.player.seekTo(it.roundToLong()) }, valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f))
+        if (!lyricsMode) {
+            Column(
+                Modifier.weight(1f).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.clickable { lyricsMode = true }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), if (compactLandscape) 120 else 200) }
+                // Cover mode intentionally keeps the two lyric lines between cover and metadata.
+                track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, compact = compactLandscape) }
+                Spacer(Modifier.height(10.dp))
+                Text(item?.mediaMetadata?.title?.toString() ?: "재생 중인 곡 없음", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = true, modifier = Modifier.weight(1f).fillMaxWidth()) }
+        }
+        // The playback controls are outside the weighted content region, so they remain pinned
+        // to the bottom even when no lyrics have been registered.
+        Spacer(Modifier.height(8.dp)); Slider(value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { vm.player.seekTo(it.roundToLong()) }, valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(formatTime(state.positionMs)); Text(formatTime(state.durationMs)) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
             IconButton(vm.player::toggleShuffle) { Icon(Icons.Default.Shuffle, null, tint = if(state.shuffle) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
@@ -290,7 +307,6 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             }
         }
         Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "좋아요") }; IconButton({ addAlbumOpen = true }) { Icon(Icons.Default.Album, "내 앨범에 추가") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, "현재 재생목록") } }
-        if (!lyricsMode) track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm) }
         if (addAlbumOpen && track != null) AlertDialog(onDismissRequest = { addAlbumOpen = false }, title = { Text("내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ vm.addToAlbum(album.id, track.id); addAlbumOpen = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); addAlbumOpen = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ addAlbumOpen = false }) { Text("취소") } })
     } }
 }
@@ -305,24 +321,27 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     }
 }
 
-@Composable private fun NowPlayingLyricsPanel(trackId: String, positionMs: Long, vm: MainViewModel, expanded: Boolean = false, modifier: Modifier = Modifier) {
+@Composable private fun NowPlayingLyricsPanel(trackId: String, positionMs: Long, vm: MainViewModel, expanded: Boolean = false, compact: Boolean = false, modifier: Modifier = Modifier) {
     val lyrics by remember(trackId) { vm.observeLyrics(trackId) }
         .collectAsStateWithLifecycle(initialValue = "" to emptyList())
     val plain = lyrics.first
     val synced = lyrics.second
     if (plain.isBlank()) {
-        Surface(Modifier.fillMaxWidth().padding(top = 12.dp).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
+        Surface(modifier.fillMaxWidth().then(if (expanded) Modifier.fillMaxHeight() else Modifier.heightIn(min = if (compact) 60.dp else 80.dp, max = if (compact) 82.dp else 110.dp)).padding(top = 8.dp).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
             Text("가사가 등록되지 않았습니다.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
     val active = if (synced.isNotEmpty()) LrcCodec.activeIndex(synced, positionMs).coerceAtLeast(0) else -1
-    Surface(modifier.fillMaxWidth().heightIn(max = if (expanded) 600.dp else 180.dp).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
+    Surface(modifier.fillMaxWidth().then(if (expanded) Modifier.fillMaxHeight() else Modifier.heightIn(min = if (compact) 72.dp else 96.dp, max = if (compact) 108.dp else 150.dp)).purpleGlass(18), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
         if (active >= 0 && !expanded) Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(synced[active].text, Modifier.fillMaxWidth().padding(bottom = 10.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             synced.getOrNull(active + 1)?.let { Text(it.text, Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) }
         } else if (synced.isNotEmpty()) {
             val listState = rememberLazyListState()
+            // This effect runs only when the panel is (re)entered or the track changes.  During
+            // playback the user-selected scroll position stays intact while the active line moves.
+            LaunchedEffect(trackId) { listState.scrollToItem((active - 3).coerceAtLeast(0)) }
             LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 56.dp, horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(synced, key = { _, line -> line.id }) { index, line ->
                     Text(line.text, color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (index == active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal)

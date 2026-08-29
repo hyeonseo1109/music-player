@@ -10,7 +10,7 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - Media3 `ExoPlayer` + `MediaSessionService` 백그라운드 재생, 미디어 알림/잠금화면/Bluetooth 미디어 키
 - Audio Focus 및 audio-becoming-noisy에 의한 유선·USB·Bluetooth 출력 분리 시 일시정지
 - 전체 곡, 실시간/한글 초성 검색, 정렬 저장, MusicRow/곡 메뉴
-- Now Playing의 좋아요·내 앨범 추가·현재 재생목록, 앨범커버 탭 가사 전환, seek/이전/재생/다음/shuffle 및 접어서 여는 repeat/A-B 패널, MediaController와 동기화되는 Mini Player
+- Now Playing의 좋아요·내 앨범 추가·현재 재생목록, 앨범커버 아래 현재/다음 두 줄 가사와 탭 가사 전환, 스크롤로 과거/다음 가사를 살피되 재생 위치는 바꾸지 않는 가사 모드, 화면 하단 고정 seek/이전/재생/다음/shuffle 및 접어서 여는 repeat/A-B 패널, MediaController와 동기화되는 Mini Player
 - PlaybackService가 관리하는 직접 A-B 구간 반복과 현재 위치 기준 이전 3초/5초/10초 즉시 반복
 - drag handle로 순서를 바로 바꾸는 실제 Media3 playlist, Play Next, Room 큐·현재 곡·위치·repeat·shuffle 저장/복원
 - 삭제된 곡을 제외한 안전한 큐 복원, 재실행 시 자동 재생하지 않는 paused 복원
@@ -20,7 +20,7 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - 실제 `TYPE_APPLICATION_OVERLAY` 플로팅 창, 고정 폭 안 줄바꿈과 현재 싱크 줄 강조, 재생 위치에 맞춘 일반/싱크 가사, 드래그/위치 저장, compact/control 모드
 - Photo Picker 또는 iTunes 검색 결과 → 1:1 이동/확대 crop → 미리보기/적용. 원격 다운로드의 `file://` 임시 이미지도 crop 저장 경로에서 지원하며, iTunes artwork grid는 loading/empty/error/retry를 제공
 - LRCLIB 수동 가사 검색은 `HendoMusic/1.0 (Android)` User-Agent로 Cloudflare 520을 피하고, 후보별 제목·아티스트·앨범·길이·싱크 여부와 전체 가사 미리보기를 제공
-- 곡 metadata 기반 iTunes/LRCLIB high-confidence 자동 enrichment. 앱 시작 소수 배치, 현재 재생 곡 우선, 재스캔 뒤 background 배치로 처리하며 전체 라이브러리를 한꺼번에 요청하지 않음. Now Playing은 Room Flow를 관찰하므로 background 결과가 저장되면 열린 가사 화면도 즉시 갱신
+- 곡 metadata 기반 iTunes/LRCLIB high-confidence 자동 enrichment와 LRCLIB 미일치 시 Genie 공개 검색/동기 가사 fallback. 앱 시작 bounded 12곡 배치, 현재 재생 곡 우선, 재스캔 뒤 background 배치로 처리하며 전체 라이브러리를 한꺼번에 요청하지 않음. Now Playing은 Room Flow를 관찰하므로 background 결과가 저장되면 열린 가사 화면도 즉시 갱신
 - 앨범커버 표시 우선순위 `USER > EMBEDDED > AUTO_SEARCH > PLACEHOLDER`, 가사 우선순위 `USER > AUTO_SEARCH > NONE`
 - Photo Picker·인터넷 결과 직접 선택으로 저장한 커버와 직접 입력·수정·LRC 가져오기·검색 결과 직접 선택으로 저장한 가사는 자동 검색이 덮어쓰지 않음
 - Supabase Anonymous Auth 가사 업로드/검색/싱크 줄 가져오기/추천/신고 UI와 RLS·중복 추천 constraint
@@ -87,7 +87,7 @@ USER > EMBEDDED > AUTO_SEARCH > PLACEHOLDER
 USER > AUTO_SEARCH > NONE
 ```
 
-`USER`는 직접 입력·수정, LRC import, 사용자가 검색 결과를 선택한 가사입니다. 수동 검색은 LRCLIB와 설정된 경우 HendoMusic 공유 가사를 함께 표시합니다. 자동 enrichment는 LRCLIB 후보 중 정규화한 title과 artist가 일치하고, 음원 길이가 8초 이내인 synced 결과만 사용합니다. background 작업은 가사가 전혀 없는 곡에만 insert하는 Room transaction을 사용하므로 USER 가사는 재스캔·앱 재실행·자동 enrichment로 덮어쓰지 않습니다.
+`USER`는 직접 입력·수정, LRC import, 사용자가 검색 결과를 선택한 가사입니다. 수동 검색은 LRCLIB와 설정된 경우 HendoMusic 공유 가사를 함께 표시합니다. 자동 enrichment는 먼저 LRCLIB 후보 중 정규화한 title과 artist가 일치하고 음원 길이가 8초 이내인 synced 결과를 사용합니다. 여기에 맞는 LRCLIB 결과가 없을 때만 Genie의 `div.search_song tr.list` 공개 검색 결과에서 정규화한 곡명·가수가 정확히 일치하는 곡을 찾고, HTTPS 동기 가사 payload의 숫자 millisecond key를 정렬해 `AUTO_GENIE`로 저장합니다. background 작업은 가사가 전혀 없는 곡에만 insert하는 Room transaction을 사용하므로 USER 가사는 재스캔·앱 재실행·자동 enrichment로 덮어쓰지 않습니다.
 
 자동 작업은 동일 곡의 in-flight 요청을 합치고, 네트워크 오류 뒤에는 짧은 재시도 지연을 둡니다. 현재 재생 곡 trigger와 background batch가 같은 곡을 동시에 요청하지 않습니다.
 
@@ -111,7 +111,7 @@ SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_ANON_KEY
 - 최신 Android는 임의의 잠금화면 UI를 허용하지 않습니다. 표준 MediaSession 잠금화면 카드에 제목/가수/커버/controls가 표시됩니다. 별도 가사 잠금화면은 보안을 우회하지 않고 overlay/알림을 사용합니다.
 - MP3/FLAC embedded tag의 범용 in-place 수정 API가 없습니다. 현재 편집은 공식 MediaStore update를 호출합니다. 소유하지 않은 파일은 시스템 승인이 필요하거나 provider가 거절할 수 있고, 실패 시 Room만 몰래 바꾸지 않습니다. Android의 `createWriteRequest`는 쓰기 접근만 부여하며 태그 인코더를 제공하지 않습니다.
 - Android 11+ 삭제/쓰기는 `createDeleteRequest`/`createWriteRequest` Activity Result로 승인 후에만 반영합니다. 현재 정보 편집은 MediaStore 표준 컬럼을 갱신하며 MP3/FLAC 바이너리 embedded tag를 직접 재작성하지는 않습니다. SAF/provider 미지원 시 Room만 바꾸지 않고 오류를 표시합니다.
-- 공개 API가 없는 사이트 HTML은 scraping하지 않고 LRCLIB/iTunes/설정 가능한 Supabase provider를 사용합니다.
+- Genie fallback은 로그인·쿠키·우회 없이 공개 HTTPS 검색 결과와 동기 가사 payload만 요청합니다. 사이트 응답 구조가 변경되거나 일치하는 곡이 없으면 자동 적용하지 않고 기존 상태를 유지합니다.
 
 ## 빌드 / APK
 
@@ -164,6 +164,7 @@ API 34 Pixel 7 AVD에서는 격리된 `/sdcard/Music/LuminaraValidation` 테스�
 | Artwork USER override의 재스캔 유지 | NOT VERIFIED | PASS — 앱 재시작과 라이브러리 새로고침 뒤에도 USER 커버 유지 (embedded Pablo Honey보다 우선) |
 | Lyrics 인터넷 검색 | NOT VERIFIED | PASS — `Creep / Radiohead` LRCLIB 검색 결과 표시, 후보 preview·29줄 synced lyrics·USER_SEARCH 저장·Now Playing 표시 확인 |
 | Lyrics 자동 enrichment | NOT VERIFIED | PASS — `You & I / One Direction` 재생만으로 LRCLIB HTTP 200·20개 후보 중 238.0초 synced 결과가 AUTO_LRCLIB으로 저장·Now Playing 활성 가사 표시됨 (로컬 240.559초, Δ2.559초, 49줄) |
+| Genie 자동 가사 fallback | NOT VERIFIED | PARTIAL — Galaxy에서 LRCLIB 미일치 곡의 HTTPS Genie 요청/응답까지 확인. 이번 12곡 batch는 title·artist exact match가 없어 저장하지 않았으므로 실제 AUTO_GENIE 저장은 NOT VERIFIED |
 | Lyrics USER override의 재스캔 유지 | NOT VERIFIED | PASS — 앱 force-stop/reopen 뒤 USER_SEARCH synced lyrics와 paused 복원 위치의 active line 유지 확인 |
 | Photo Picker | NOT VERIFIED | NOT VERIFIED |
 | MediaStore 승인 삭제·쓰기 | NOT VERIFIED | NOT VERIFIED |
@@ -203,7 +204,7 @@ adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:
 
 ## 자동 테스트
 
-`app/src/test/java/com/hendo/hendomusic/`는 queue drag 재정렬/복원, 중복 곡 인스턴스 복원, Play Next+재정렬, shuffle 순회 보존, 재스캔 state 병합, 앨범 정렬/폴더 생성·이동·해체, remote 가사 local copy, synced 줄 구조 변경, 추천 중복 guard, artwork 표시 우선순위와 자동 검색 confidence(가사 title/artist/길이), A-B 범위의 3/5/10초·시작 clamp·최소 길이 규칙을 검증합니다.
+`app/src/test/java/com/hendo/hendomusic/`는 queue drag 재정렬/복원, 중복 곡 인스턴스 복원, Play Next+재정렬, shuffle 순회 보존, 재스캔 state 병합, 앨범 정렬/폴더 생성·이동·해체, remote 가사 local copy, synced 줄 구조 변경, Genie song-row/동기 payload parser와 strict confidence, 추천 중복 guard, artwork 표시 우선순위와 자동 검색 confidence(가사 title/artist/길이), A-B 범위의 3/5/10초·시작 clamp·최소 길이 규칙을 검증합니다.
 
 최신 실행:
 

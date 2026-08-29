@@ -9,6 +9,8 @@ import com.hendo.hendomusic.data.LyricsSource
 import com.hendo.hendomusic.data.TrackEntity
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.network.ArtworkProvider
+import com.hendo.hendomusic.network.GenieLyricsProvider
+import kotlinx.coroutines.CancellationException
 import com.hendo.hendomusic.network.LrcLibLyricsProvider
 import java.util.concurrent.ConcurrentHashMap
 
@@ -20,6 +22,7 @@ class AutoMetadataEnricher(
     private val dao: AppDao,
     private val artwork: ArtworkProvider = ArtworkProvider(),
     private val lyrics: LrcLibLyricsProvider = LrcLibLyricsProvider(),
+    private val genie: GenieLyricsProvider = GenieLyricsProvider(),
 ) {
     private val inFlightTrackIds = ConcurrentHashMap.newKeySet<String>()
     private val retryAfterMs = ConcurrentHashMap<String, Long>()
@@ -55,7 +58,13 @@ class AutoMetadataEnricher(
 
     private suspend fun enrichLyrics(track: TrackEntity) {
         Log.d("AutoLyrics", "start track=${track.id} title=${track.title} artist=${track.artist} durationMs=${track.durationMs}")
-        val candidates = lyrics.search(track.title, track.artist)
+        val candidates = try {
+            lyrics.search(track.title, track.artist)
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            Log.w("AutoLyrics", "LRCLIB request failed track=${track.id}", error)
+            emptyList()
+        }
         Log.d("AutoLyrics", "candidates track=${track.id} count=${candidates.size}")
         val candidate = candidates
             .firstOrNull {
@@ -64,10 +73,25 @@ class AutoMetadataEnricher(
                     it.trackTitle, it.trackArtist, it.durationMs,
                 )
             }
-            ?: run {
-                Log.d("AutoLyrics", "no eligible candidate track=${track.id}")
+        if (candidate == null) {
+            Log.d("AutoLyrics", "LRCLIB miss; Genie search start track=${track.id}")
+            val genieResult = try {
+                genie.search(track.title, track.artist, track.album)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                Log.w("AutoLyrics", "Genie request failed track=${track.id}", error)
+                null
+            } ?: run {
+                Log.d("AutoLyrics", "Genie miss track=${track.id}")
                 return
             }
+            val saved = dao.insertAutoLyricsIfMissing(
+                LyricsEntity(trackId = track.id, source = LyricsSource.AUTO_GENIE.name, plainText = genieResult.plainText),
+                genieResult.syncedLines.mapIndexed { index, line -> LyricLineEntity(lyricsId = 0, lineIndex = index, startTimeMs = line.startTimeMs, text = line.text) },
+            )
+            Log.d("AutoLyrics", "Genie save track=${track.id} songId=${genieResult.songId} lines=${genieResult.syncedLines.size} saved=$saved")
+            return
+        }
         Log.d("AutoLyrics", "selected track=${track.id} title=${candidate.trackTitle} artist=${candidate.trackArtist} remoteDurationMs=${candidate.durationMs} durationDeltaMs=${candidate.durationMs?.let { kotlin.math.abs(track.durationMs - it) }}")
         val lines = candidate.syncedText?.let(LrcCodec::parse).orEmpty()
         val saved = dao.insertAutoLyricsIfMissing(
