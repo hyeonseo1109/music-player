@@ -266,12 +266,12 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             ) {
                 Spacer(Modifier.height(sectionGap))
                 Box(Modifier.clickable { lyricsMode = true }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), if (compactLandscape) 120 else 200) }
-                // Cover mode intentionally keeps the two lyric lines between cover and metadata.
-                Spacer(Modifier.height(sectionGap))
-                track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, compact = compactLandscape) }
                 Spacer(Modifier.height(sectionGap))
                 Text(item?.mediaMetadata?.title?.toString() ?: "재생 중인 곡 없음", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Cover mode keeps the active/next lyrics below the metadata.
+                Spacer(Modifier.height(sectionGap))
+                track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, compact = compactLandscape) }
             }
         } else {
             track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = true, modifier = Modifier.weight(1f).fillMaxWidth()) }
@@ -341,9 +341,26 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             synced.getOrNull(active + 1)?.let { Text(it.text, Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) }
         } else if (synced.isNotEmpty()) {
             val listState = rememberLazyListState()
-            // This effect runs only when the panel is (re)entered or the track changes.  During
-            // playback the user-selected scroll position stays intact while the active line moves.
-            LaunchedEffect(trackId) { listState.scrollToItem((active - 3).coerceAtLeast(0)) }
+            var userPinnedScroll by remember(trackId) { mutableStateOf(false) }
+            var programmaticScroll by remember(trackId) { mutableStateOf(false) }
+            // Entering lyrics mode starts in follow-playback mode. A direct user scroll opts out
+            // until this panel is dismissed; returning from cover mode creates a fresh panel and
+            // therefore resumes following the active lyric.
+            LaunchedEffect(trackId) {
+                programmaticScroll = true
+                listState.scrollToItem((active - 3).coerceAtLeast(0))
+                programmaticScroll = false
+            }
+            LaunchedEffect(listState.isScrollInProgress) {
+                if (listState.isScrollInProgress && !programmaticScroll) userPinnedScroll = true
+            }
+            LaunchedEffect(active, userPinnedScroll) {
+                if (!userPinnedScroll && active >= 0) {
+                    programmaticScroll = true
+                    listState.animateScrollToItem((active - 3).coerceAtLeast(0))
+                    programmaticScroll = false
+                }
+            }
             LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(vertical = 56.dp, horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(synced, key = { _, line -> line.id }) { index, line ->
                     Text(line.text, color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (index == active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal)
