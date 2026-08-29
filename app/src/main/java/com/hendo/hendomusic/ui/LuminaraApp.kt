@@ -34,9 +34,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -67,7 +64,7 @@ fun LuminaraApp(
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
     if (!ui.settings.onboardingDone) {
-        OnboardingScreen(requestOnboardingPermission, requestOverlay) { viewModel.completeOnboarding() }
+        OnboardingScreen(requestOnboardingPermission) { viewModel.completeOnboarding() }
         return
     }
     val nav = rememberNavController()
@@ -117,29 +114,21 @@ fun LuminaraApp(
     } }
 }
 
-@Composable private fun OnboardingScreen(requestPermission: (String, (Boolean) -> Unit) -> Unit, requestOverlay: () -> Unit, done: () -> Unit) {
+@Composable private fun OnboardingScreen(requestPermission: (String, (Boolean) -> Unit) -> Unit, done: () -> Unit) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) overlayGranted = Settings.canDrawOverlays(context)
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
     val audioGranted = hasAudioPermission(context)
     val notificationGranted = hasNotificationPermission(context)
-    // Persist completion only after every permission from this one-time flow is accepted.
-    // A rejection deliberately leaves onboarding incomplete, so it is shown again next launch.
-    LaunchedEffect(audioGranted, notificationGranted, overlayGranted) {
-        if (audioGranted && notificationGranted && overlayGranted) done()
+    // Overlay is a feature-specific special access, not an app-entry requirement. It is asked
+    // only when the user enables floating lyrics in Settings, never every time the app launches.
+    // Rejected runtime audio/notification permissions deliberately keep onboarding incomplete.
+    LaunchedEffect(audioGranted, notificationGranted) {
+        if (audioGranted && notificationGranted) done()
     }
     val initialStep = remember {
         when {
             !audioGranted -> 0
             !notificationGranted -> 1
-            else -> 2
+            else -> 0
         }
     }
     var step by remember { mutableIntStateOf(initialStep) }
@@ -147,7 +136,6 @@ fun LuminaraApp(
     val items = listOf(
         Triple(Icons.Default.LibraryMusic, "음악 및 오디오", "휴대폰의 로컬 음악 라이브러리를 읽습니다."),
         Triple(Icons.Default.Notifications, "알림 및 미디어 컨트롤", "백그라운드 재생과 잠금화면 제어에 필요합니다."),
-        Triple(Icons.Default.PictureInPicture, "다른 앱 위에 표시", "다른 앱을 사용하는 동안 싱크 가사를 띄웁니다."),
     )
     PurpleAtmosphere { Box(Modifier.fillMaxSize().padding(28.dp)) {
         Column(Modifier.align(Alignment.Center)) {
@@ -166,9 +154,9 @@ fun LuminaraApp(
                         permissionDenied = !granted
                         if (granted) step++
                     } else step++
-                    2 -> if (!Settings.canDrawOverlays(context)) requestOverlay() else done()
+                    else -> done()
                 }
-            }, Modifier.fillMaxWidth().height(54.dp)) { Text(if (step == 2) "설정하고 시작" else "권한 요청 후 다음") }
+            }, Modifier.fillMaxWidth().height(54.dp)) { Text("권한 요청 후 다음") }
             if (permissionDenied) Text("권한을 허용해야 이 단계를 진행할 수 있습니다.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
         }
     } }
