@@ -89,7 +89,17 @@ fun LuminaraApp(
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
-            composable("albums") { AlbumOrganizerScreen(ui, viewModel, choosePlaylist, exportPlaylist) }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel, choosePlaylist, exportPlaylist) { id -> nav.navigate("album/$id") } }
+            composable("album/{albumId}") { back ->
+                val id = back.arguments?.getString("albumId")?.toLongOrNull()
+                val album = ui.albums.firstOrNull { it.id == id }
+                val tracks by remember(id) { if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else viewModel.observeAlbumTracks(id) }.collectAsStateWithLifecycle(emptyList())
+                Column(Modifier.fillMaxSize()) {
+                    TopAppBar({ Text(album?.name ?: "내 앨범") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } })
+                    if (tracks.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 앨범에 담긴 곡이 없습니다.") }
+                    else LazyColumn { items(tracks, key = { it.id }) { track -> MusicRow(track, false, { viewModel.play(track, tracks) }, {}, {}) } }
+                }
+            }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
             composable("nowLyrics/{trackId}") { back ->

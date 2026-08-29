@@ -31,7 +31,7 @@ import com.hendo.hendomusic.PlaylistImportState
 import kotlin.math.roundToInt
 
 @Composable
-fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlaylist: () -> Unit, exportPlaylist: (UserAlbumEntity) -> Unit) {
+fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlaylist: () -> Unit, exportPlaylist: (UserAlbumEntity) -> Unit, openAlbum: (Long) -> Unit) {
     var createAlbum by remember { mutableStateOf(false) }
     var createFolder by remember { mutableStateOf(false) }
     var folderSheet by remember { mutableStateOf<AlbumFolderEntity?>(null) }
@@ -115,6 +115,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
                                 onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y },
                             )
                     },
+                    { openAlbum(album.id) },
                 )
             }
         }
@@ -133,7 +134,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
         AlbumNameDialog("새 폴더 이름", "새 폴더") { name -> name?.let { viewModel.createFolderFromAlbums(it, pair.first, pair.second) }; pendingPair = null }
     }
     folderSheet?.let { folder ->
-        FolderSheet(folder, ui.albums.filter { it.folderId == folder.id }, viewModel) { folderSheet = null }
+        FolderSheet(folder, ui.albums.filter { it.folderId == folder.id }, viewModel, openAlbum) { folderSheet = null }
     }
     specialTracks?.let { (name, tracks) ->
         AlertDialog(onDismissRequest = { specialTracks = null }, title = { Text(name) }, text = { if (tracks.isEmpty()) Text("아직 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 380.dp)) { items(tracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track, tracks); specialTracks = null }) } } }, confirmButton = { TextButton({ specialTracks = null }) { Text("닫기") } })
@@ -148,8 +149,8 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
     )
 }
 
-@Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier, dragModifier: Modifier = Modifier) {
-    Surface(modifier.fillMaxWidth().purpleGlass(18), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+@Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier, dragModifier: Modifier = Modifier, open: () -> Unit) {
+    Surface(modifier.fillMaxWidth().purpleGlass(18).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.DragHandle, "이 손잡이를 길게 눌러 이동", dragModifier, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(Icons.Default.Album, null, Modifier.padding(horizontal = 14.dp), tint = MaterialTheme.colorScheme.primary)
@@ -171,10 +172,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
     }
 }
 
-@Composable private fun FolderSheet(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, close: () -> Unit) {
+@Composable private fun FolderSheet(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, openAlbum: (Long) -> Unit, close: () -> Unit) {
     var rename by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    var openedAlbum by remember { mutableStateOf<UserAlbumEntity?>(null) }
     ModalBottomSheet(onDismissRequest = close) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(folder.name, Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
@@ -186,14 +186,10 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, choosePlayli
             ListItem(
                 headlineContent = { Text(album.name) }, leadingContent = { Icon(Icons.Default.Album, null) },
                 trailingContent = { TextButton({ viewModel.moveAlbumToRoot(album.id) }) { Text("root로 이동") } },
-                modifier = Modifier.clickable { openedAlbum = album },
+                modifier = Modifier.clickable { close(); openAlbum(album.id) },
             )
         }
         Spacer(Modifier.height(28.dp))
-    }
-    openedAlbum?.let { album ->
-        val albumTracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
-        AlertDialog(onDismissRequest = { openedAlbum = null }, title = { Text(album.name) }, text = { if (albumTracks.isEmpty()) Text("이 앨범에 담긴 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 360.dp)) { items(albumTracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track, albumTracks); openedAlbum = null; close() }) } } }, confirmButton = { TextButton({ openedAlbum = null }) { Text("닫기") } })
     }
     if (rename) AlbumNameDialog("폴더명 수정", folder.name) { it?.let { name -> viewModel.renameFolder(folder.id, name) }; rename = false }
     if (confirmDelete) AlertDialog(
