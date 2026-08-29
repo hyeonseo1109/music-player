@@ -159,7 +159,7 @@ class PlaybackService : MediaSessionService() {
         player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(shifted.toIntArray(), System.nanoTime()))
     }
 
-    /** Reorder the visible queue itself, so UI, Media3 and Room all share the same shuffle order. */
+    /** Reorder existing items in-place, so toggling shuffle never re-prepares the current source. */
     private fun toggleQueueShuffle() {
         val current = player.currentMediaItem ?: run {
             player.shuffleModeEnabled = !player.shuffleModeEnabled
@@ -175,10 +175,18 @@ class PlaybackService : MediaSessionService() {
         } else {
             items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.mediaMetadata.title?.toString().orEmpty() })
         }
-        val index = ordered.indexOfFirst { it.mediaId == current.mediaId }.coerceAtLeast(0)
-        player.setMediaItems(ordered, index, player.currentPosition)
+        // moveMediaItem keeps the current MediaSource alive. setMediaItems(...) used to replace
+        // it, briefly interrupting audio on every shuffle toggle.
+        ordered.forEachIndexed { targetIndex, target ->
+            val fromIndex = (targetIndex until player.mediaItemCount)
+                .firstOrNull { player.getMediaItemAt(it).mediaId == target.mediaId }
+                ?: return@forEachIndexed
+            if (fromIndex != targetIndex) player.moveMediaItem(fromIndex, targetIndex)
+        }
+        // The physical queue is already randomized. Use that exact order for shuffle traversal so
+        // the list the user sees and the next item Media3 plays agree.
+        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(IntArray(player.mediaItemCount) { it }, System.nanoTime()))
         player.shuffleModeEnabled = shuffled
-        player.prepare()
     }
 
     private suspend fun restore() = withContext(Dispatchers.IO) {

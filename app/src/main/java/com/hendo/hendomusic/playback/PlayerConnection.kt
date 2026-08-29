@@ -78,20 +78,9 @@ class PlayerConnection(private val context: Context) {
     fun previous() { clearLoop(); controller?.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
     fun toggleShuffle() {
-        controller?.apply {
-            val current = currentMediaItem ?: run { shuffleModeEnabled = !shuffleModeEnabled; return@apply }
-            val enabled = !shuffleModeEnabled
-            val items = (0 until mediaItemCount).map(::getMediaItemAt)
-            val ordered = if (enabled) {
-                listOf(current) + items.shuffled().filterNot { it.mediaId == current.mediaId }
-            } else {
-                items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.mediaMetadata.title?.toString().orEmpty() })
-            }
-            val index = ordered.indexOfFirst { it.mediaId == current.mediaId }.coerceAtLeast(0)
-            setMediaItems(ordered, index, currentPosition)
-            shuffleModeEnabled = enabled
-            prepare()
-        }
+        // The service moves existing MediaItems in-place. Replacing the playlist here causes
+        // ExoPlayer to re-buffer the current source and produces an audible playback hiccup.
+        controller?.sendCustomCommand(PlaybackService.TOGGLE_QUEUE_SHUFFLE_COMMAND, Bundle.EMPTY)
     }
     fun cycleRepeat() { clearLoop(); controller?.repeatMode = ((controller?.repeatMode ?: 0) + 1) % 3 }
     fun setRepeatMode(mode: Int) { clearLoop(); controller?.repeatMode = mode }
