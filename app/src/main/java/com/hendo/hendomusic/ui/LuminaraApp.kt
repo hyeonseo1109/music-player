@@ -71,6 +71,12 @@ fun LuminaraApp(
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
+    val settingsLoaded by viewModel.settingsLoaded.collectAsStateWithLifecycle()
+    // Do not render the default onboarding state while DataStore is resolving saved permissions.
+    if (!settingsLoaded) {
+        PurpleAtmosphere { }
+        return
+    }
     if (!ui.settings.onboardingDone) {
         OnboardingScreen(requestOnboardingPermission) { viewModel.completeOnboarding() }
         return
@@ -95,7 +101,7 @@ fun LuminaraApp(
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
-            composable("albums") { AlbumOrganizerScreen(ui, viewModel) { id -> nav.navigate("album/$id") } }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }) { kind -> nav.navigate("special/$kind") } }
             composable("album/{albumId}") { back ->
                 val id = back.arguments?.getString("albumId")?.toLongOrNull()
                 val album = ui.albums.firstOrNull { it.id == id }
@@ -132,6 +138,12 @@ fun LuminaraApp(
                         }
                     }
                 }
+            }
+            composable("special/{kind}") { back ->
+                val kind = back.arguments?.getString("kind")
+                val name = if (kind == "favorites") "좋아요한 곡" else "많이 들은 곡"
+                val specialTracks = if (kind == "favorites") ui.tracks.filter { it.isFavorite } else ui.tracks.filter { it.playCount > 0 }.sortedByDescending { it.playCount }
+                SpecialAlbumTracksScreen(name, specialTracks, viewModel) { nav.popBackStack() }
             }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, choosePlaylist, exportPlaylist, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
@@ -296,6 +308,24 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 
 @Composable private fun EmptyLibrary(scan: () -> Unit) = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.GraphicEq, null, Modifier.size(64.dp), MaterialTheme.colorScheme.primary); Text("음악이 아직 없습니다", style = MaterialTheme.typography.titleLarge); Text("권한을 허용한 뒤 라이브러리를 검색하세요."); Button(scan) { Text("음악 검색") } }
+}
+
+@Composable private fun SpecialAlbumTracksScreen(name: String, tracks: List<TrackEntity>, viewModel: MainViewModel, back: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(name) },
+            navigationIcon = { IconButton(back) { Icon(Icons.Default.ArrowBack, "뒤로") } },
+        )
+        if (tracks.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("아직 곡이 없습니다.") }
+        } else {
+            LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
+                items(tracks, key = { it.id }) { track ->
+                    MusicRow(track, false, { viewModel.play(track, tracks) }, {}, {})
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun MusicRow(track: TrackEntity, selected: Boolean, play: () -> Unit, select: () -> Unit, menu: () -> Unit) {

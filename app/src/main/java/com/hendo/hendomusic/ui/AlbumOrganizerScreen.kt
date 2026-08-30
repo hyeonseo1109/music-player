@@ -27,6 +27,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,12 +41,11 @@ import com.hendo.hendomusic.PlaylistImportState
 import kotlin.math.roundToInt
 
 @Composable
-fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (Long) -> Unit) {
+fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (Long) -> Unit, openSpecial: (String) -> Unit) {
     var createAlbum by remember { mutableStateOf(false) }
     var createFolder by remember { mutableStateOf(false) }
     var folderSheet by remember { mutableStateOf<AlbumFolderEntity?>(null) }
     var pendingPair by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    var specialTracks by remember { mutableStateOf<Pair<String, List<com.hendo.hendomusic.data.TrackEntity>>?>(null) }
     var gridMode by rememberSaveable { mutableStateOf(true) }
     val rootAlbums = remember { mutableStateListOf<UserAlbumEntity>() }
     val orderedFolders = remember { mutableStateListOf<AlbumFolderEntity>() }
@@ -90,15 +90,15 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
         )
         Box(Modifier.weight(1f)) {
         if (gridMode) LazyVerticalGrid(columns = GridCells.Adaptive(132.dp), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { specialTracks = "좋아요한 곡" to ui.tracks.filter { it.isFavorite } } }
-            if (ui.settings.trackListening) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { specialTracks = "많이 들은 곡" to ui.tracks.filter { it.playCount > 0 }.sortedByDescending { it.playCount } } }
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") } }
+            if (ui.settings.trackListening) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder -> FolderTile(folder, ui.albums.filter { it.folderId == folder.id }, viewModel) { folderSheet = folder } }
             items(rootAlbums, key = { "album:${it.id}" }) { album -> AlbumTile(album, viewModel, { openAlbum(album.id) }) }
         } else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { specialTracks = "좋아요한 곡" to ui.tracks.filter { it.isFavorite } }; if (ui.settings.trackListening) SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { specialTracks = "많이 들은 곡" to ui.tracks.filter { it.playCount > 0 }.sortedByDescending { it.playCount } } }
+            item { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") }; if (ui.settings.trackListening) SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder ->
                 val members = ui.albums.filter { it.folderId == folder.id }
-                FolderCard(folder, members, Modifier.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = (from + if (amount.y > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) orderedFolders.add(to, orderedFolders.removeAt(from)) }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) }, onDragCancel = {}) }, { folderSheet = folder })
+                FolderCard(folder, members, viewModel, Modifier.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = (from + if (amount.y > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) orderedFolders.add(to, orderedFolders.removeAt(from)) }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) }, onDragCancel = {}) }, { folderSheet = folder })
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 val dragging = draggedId == album.id
@@ -146,9 +146,6 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     folderSheet?.let { folder ->
         FolderSheet(folder, ui.albums.filter { it.folderId == folder.id }, viewModel, openAlbum) { folderSheet = null }
     }
-    specialTracks?.let { (name, tracks) ->
-        AlertDialog(onDismissRequest = { specialTracks = null }, title = { Text(name) }, text = { if (tracks.isEmpty()) Text("아직 곡이 없습니다.") else LazyColumn(Modifier.heightIn(max = 380.dp)) { items(tracks, key = { it.id }) { track -> ListItem({ Text(track.title) }, supportingContent = { Text(track.artist) }, modifier = Modifier.clickable { viewModel.play(track, tracks); specialTracks = null }) } } }, confirmButton = { TextButton({ specialTracks = null }) { Text("닫기") } })
-    }
 }
 
 @Composable private fun SpecialAlbumCard(name: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, open: () -> Unit) {
@@ -182,22 +179,28 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 
 @Composable private fun FolderTile(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, click: () -> Unit) {
     Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable(onClick = click), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Column(Modifier.padding(12.dp)) { Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)) {
-            if (members.isEmpty()) Icon(Icons.Default.Folder, null, Modifier.align(Alignment.Center).size(54.dp), tint = MaterialTheme.colorScheme.primary)
-            else members.take(4).forEachIndexed { index, album -> FolderAlbumThumb(album, viewModel, index) }
-        }; Spacer(Modifier.height(8.dp)); Text(folder.name, maxLines = 1); Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall) }
+        Column(Modifier.padding(12.dp)) { FolderArtworkGrid(members, viewModel, Modifier.fillMaxWidth().aspectRatio(1f)); Spacer(Modifier.height(8.dp)); Text(folder.name, maxLines = 1); Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall) }
     }
 }
-@Composable private fun BoxScope.FolderAlbumThumb(album: UserAlbumEntity, viewModel: MainViewModel, index: Int) {
+@Composable private fun FolderArtworkGrid(members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)) {
+        if (members.isEmpty()) Icon(Icons.Default.Folder, null, Modifier.align(Alignment.Center).size(54.dp), tint = MaterialTheme.colorScheme.primary)
+        else {
+            val size = (maxWidth - 18.dp) / 2
+            members.take(4).forEachIndexed { index, album -> FolderAlbumThumb(album, viewModel, index, size) }
+        }
+    }
+}
+@Composable private fun BoxScope.FolderAlbumThumb(album: UserAlbumEntity, viewModel: MainViewModel, index: Int, size: Dp) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     val alignment = listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd)[index]
-    AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.align(alignment).size(50.dp).padding(2.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+    AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.align(alignment).padding(6.dp).size(size), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
 }
 
-@Composable private fun FolderCard(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, modifier: Modifier = Modifier, click: () -> Unit) {
+@Composable private fun FolderCard(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier, click: () -> Unit) {
     Surface(modifier.fillMaxWidth().purpleGlass(20).clickable(onClick = click), shape = RoundedCornerShape(20.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Folder, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+            FolderArtworkGrid(members, viewModel = viewModel, modifier = Modifier.size(64.dp))
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(folder.name, style = MaterialTheme.typography.titleMedium)
                 Text("${members.size}개 앨범 · ${members.take(3).joinToString(" · ") { it.name }}", maxLines = 1, style = MaterialTheme.typography.bodySmall)

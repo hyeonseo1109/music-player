@@ -76,6 +76,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val playlistImport = mutablePlaylistImport.asStateFlow()
     private val query = MutableStateFlow("")
     private val scanState = MutableStateFlow<Pair<Boolean, String?>>(false to null)
+    private val mutableSettingsLoaded = MutableStateFlow(false)
+    /** Prevents the default onboarding value from flashing before DataStore has emitted. */
+    val settingsLoaded: StateFlow<Boolean> = mutableSettingsLoaded.asStateFlow()
     val uiState: StateFlow<MainUiState> = combine(
         container.musicRepository.tracks, container.preferences.settings, query.debounce(180),
         dao.observeAlbums(), dao.observeFolders(), scanState,
@@ -98,7 +101,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Warm a practical batch on launch so metadata appears without the user opening a search UI.
     // The work remains bounded: playback still has priority and a scan never requests the whole library at once.
-    init { viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichMissing(limit = 12) } }
+    init {
+        viewModelScope.launch { container.preferences.settings.first(); mutableSettingsLoaded.value = true }
+        viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichMissing(limit = 12) }
+    }
 
     fun setQuery(value: String) { query.value = value }
     fun scan() = viewModelScope.launch {
