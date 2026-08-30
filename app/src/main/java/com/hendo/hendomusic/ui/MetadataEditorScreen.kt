@@ -57,6 +57,7 @@ fun MetadataEditorScreen(
     var artworkMenu by remember { mutableStateOf(false) }
     var artworkSearch by remember { mutableStateOf(false) }
     var cropSource by remember { mutableStateOf<Uri?>(null) }
+    var artworkSelectionMode by remember { mutableStateOf("picker") }
     var confirmBack by remember { mutableStateOf(false) }
     val dirty = title != track.title || artist != track.artist || album != track.album || albumArtist != track.albumArtist.orEmpty()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { cropSource = it }
@@ -90,8 +91,8 @@ fun MetadataEditorScreen(
     }
 
     if (artworkMenu) ModalBottomSheet(onDismissRequest = { artworkMenu = false }) {
-        ListItem({ Text("갤러리에서 선택") }, leadingContent = { Icon(Icons.Default.PhotoLibrary, null) }, modifier = Modifier.clickable { artworkMenu = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
-        ListItem({ Text("이미지 검색") }, leadingContent = { Icon(Icons.Default.ImageSearch, null) }, modifier = Modifier.clickable { artworkMenu = false; artworkSearch = true; viewModel.resetArtworkSearch() })
+        ListItem({ Text("갤러리에서 선택") }, leadingContent = { Icon(Icons.Default.PhotoLibrary, null) }, modifier = Modifier.clickable { artworkSelectionMode = "picker"; artworkMenu = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+        ListItem({ Text("이미지 검색") }, leadingContent = { Icon(Icons.Default.ImageSearch, null) }, modifier = Modifier.clickable { artworkSelectionMode = "search"; artworkMenu = false; artworkSearch = true; viewModel.resetArtworkSearch() })
         ListItem({ Text("현재 이미지 제거") }, leadingContent = { Icon(Icons.Default.HideImage, null) }, modifier = Modifier.clickable { viewModel.setArtwork(track.id, null); artworkMenu = false })
         ListItem({ Text("취소") }, leadingContent = { Icon(Icons.Default.Close, null) }, modifier = Modifier.clickable { artworkMenu = false })
         Spacer(Modifier.height(24.dp))
@@ -101,7 +102,7 @@ fun MetadataEditorScreen(
     }
     cropSource?.let { source -> CropArtworkDialog(source, track.id, viewModel, { cropSource = null }, {
         cropSource = null
-        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        if (artworkSelectionMode == "search") artworkSearch = true else photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }) { uri -> cropSource = null; message = "새 커버를 적용했습니다: ${uri.lastPathSegment}" } }
     if (confirmBack) AlertDialog(
         onDismissRequest = { confirmBack = false }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") },

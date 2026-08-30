@@ -3,6 +3,7 @@
 package com.hendo.hendomusic.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -101,7 +102,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 val dragging = draggedId == album.id
-                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, label = "albumDrag")
+                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, animationSpec = tween(110), label = "albumDrag")
                 AlbumCard(
                     album,
                     Modifier

@@ -4,6 +4,7 @@ package com.hendo.hendomusic.ui
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -63,8 +64,8 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             itemsIndexed(localQueue, key = { _, item -> item.mediaId }) { index, item ->
                 val dragging = draggedId == item.mediaId
-                val scale by animateFloatAsState(if (dragging) 1.025f else 1f, label = "queueScale")
-                val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, label = "queueElevation")
+                val scale by animateFloatAsState(if (dragging) 1.025f else 1f, animationSpec = tween(110), label = "queueScale")
+                val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, animationSpec = tween(110), label = "queueElevation")
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = Color.Transparent,
