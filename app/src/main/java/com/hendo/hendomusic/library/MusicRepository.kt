@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import com.mpatric.mp3agic.Mp3File
 import com.mpatric.mp3agic.ID3v24Tag
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
 import java.io.File
 import java.security.MessageDigest
 
@@ -120,6 +122,11 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
+            if (track.fileName.endsWith(".m4a", ignoreCase = true)) {
+                rewriteM4aTags(track, title, artist, album, albumArtist)
+                dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
+                return@withContext
+            }
             if (track.mediaStoreId != null) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, title); put(MediaStore.Audio.Media.ARTIST, artist); put(MediaStore.Audio.Media.ALBUM, album)
@@ -156,6 +163,33 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                 ?: error("이 저장소는 MP3 파일 쓰기를 지원하지 않습니다.")
             context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
         } finally { source.delete(); rewritten.delete() }
+    }
+
+    /**
+     * Rewrites M4A/MP4 metadata on a temporary copy and writes it back only after
+     * Android has granted the caller write access to the selected media item.
+     */
+    private fun rewriteM4aTags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
+        val source = File.createTempFile("hendo-source-", ".m4a", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(track.uri))?.use { input ->
+                source.outputStream().use { input.copyTo(it) }
+            } ?: error("원본 M4A를 읽을 수 없습니다.")
+            val audio = AudioFileIO.read(source)
+            val tag = audio.tagOrCreateAndSetDefault
+            tag.setField(FieldKey.TITLE, title)
+            tag.setField(FieldKey.ARTIST, artist)
+            tag.setField(FieldKey.ALBUM, album)
+            if (albumArtist.isNullOrBlank()) tag.deleteField(FieldKey.ALBUM_ARTIST)
+            else tag.setField(FieldKey.ALBUM_ARTIST, albumArtist)
+            AudioFileIO.write(audio)
+            context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output ->
+                source.inputStream().use { it.copyTo(output) }
+            } ?: error("이 저장소는 M4A 파일 쓰기를 지원하지 않습니다.")
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
+        } finally {
+            source.delete()
+        }
     }
 
     private suspend fun preserveAppState(scanned: List<TrackEntity>): List<TrackEntity> {

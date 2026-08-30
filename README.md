@@ -112,8 +112,7 @@ SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_ANON_KEY
 ## Android 정책상 제약
 
 - 최신 Android는 임의의 잠금화면 UI를 허용하지 않습니다. 표준 MediaSession 잠금화면 카드에 제목/가수/커버/controls가 표시됩니다. 별도 가사 잠금화면은 보안을 우회하지 않고 overlay/알림을 사용합니다.
-- MP3/FLAC embedded tag의 범용 in-place 수정 API가 없습니다. 현재 편집은 공식 MediaStore update를 호출합니다. 소유하지 않은 파일은 시스템 승인이 필요하거나 provider가 거절할 수 있고, 실패 시 Room만 몰래 바꾸지 않습니다. Android의 `createWriteRequest`는 쓰기 접근만 부여하며 태그 인코더를 제공하지 않습니다.
-- Android 11+ 삭제/쓰기는 `createDeleteRequest`/`createWriteRequest` Activity Result로 승인 후에만 반영합니다. 현재 정보 편집은 MediaStore 표준 컬럼을 갱신하며 MP3/FLAC 바이너리 embedded tag를 직접 재작성하지는 않습니다. SAF/provider 미지원 시 Room만 바꾸지 않고 오류를 표시합니다.
+- Android 11+ 삭제/쓰기는 `createDeleteRequest`/`createWriteRequest` Activity Result로 승인 후에만 반영합니다. MP3는 ID3v2, M4A는 MP4 metadata를 임시 복사본에서 수정한 뒤 승인된 MediaStore URI에 다시 기록하므로 다른 음악 앱에도 갱신된 title/artist/album/album artist가 반영됩니다. 지원하지 않는 형식 또는 SAF/provider 미지원 시 Room만 바꾸지 않고 오류를 표시합니다.
 - Genie fallback은 로그인·쿠키·우회 없이 공개 HTTPS 검색 결과와 동기 가사 payload만 요청합니다. 사이트 응답 구조가 변경되거나 일치하는 곡이 없으면 자동 적용하지 않고 기존 상태를 유지합니다.
 
 ## 빌드 / APK
@@ -203,7 +202,7 @@ adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:
 
 ## Embedded tag 판단
 
-현 시점에는 임의 라이브러리를 추가하지 않았습니다. [TagLib](https://taglib.org/)은 MP3/MP4/AAC/FLAC 등을 폭넓게 다루지만 C++/NDK 통합, content URI의 seekable copy/원자적 교체, 형식별 손상 회귀 테스트가 선행돼야 합니다. `jaudiotagger-android`는 오래된 Java 포크이고, `mp3agic`은 MP3 전용이라 요구 범위를 만족하지 못합니다. 따라서 현재는 시스템 승인 기반 metadata 갱신을 안전한 범위로 유지합니다. Android 공식 [MediaStore 문서](https://developer.android.com/reference/android/provider/MediaStore.html)도 write request가 접근 승인을 위한 API임을 명시합니다.
+MP3는 `mp3agic`, M4A는 `jaudiotagger`를 사용해 파일을 cache의 임시 복사본에서 수정한 뒤 원래 MediaStore URI로 다시 기록합니다. 이 방식은 MediaStore write request 승인 범위 안에서만 동작하며, 실패 시 Room만 갱신하지 않습니다. FLAC 등 다른 형식의 embedded tag 재작성은 아직 지원하지 않습니다. Android 공식 [MediaStore 문서](https://developer.android.com/reference/android/provider/MediaStore.html)도 write request가 접근 승인을 위한 API임을 명시합니다.
 
 ## 자동 테스트
 
@@ -221,7 +220,7 @@ adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:
 
 ## 남은 제품화 작업
 
-- MP3/FLAC/M4A 파일의 범용 embedded tag 바이너리 재작성(현재는 공식 MediaStore metadata update)
+- FLAC 등 MP3/M4A 외 파일의 embedded tag 바이너리 재작성
 - sleep timer, 수동 JSON backup 파일 picker, 장시간/대규모 라이브러리 실기기 성능 튜닝
 - Photo Picker·MediaStore 승인·드래그를 실제 제스처로 돌리는 Compose instrumented UI test 확장
 - 실제 Supabase project/Anonymous Auth가 제공된 환경에서의 schema 적용·end-to-end 운영 검증과 moderation 관리 화면

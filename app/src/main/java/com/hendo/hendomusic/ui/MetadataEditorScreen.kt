@@ -85,7 +85,7 @@ fun MetadataEditorScreen(
             OutlinedTextField(artist, { artist = it }, Modifier.fillMaxWidth(), label = { Text("아티스트") }, singleLine = true)
             OutlinedTextField(album, { album = it }, Modifier.fillMaxWidth(), label = { Text("앨범") }, singleLine = true)
             OutlinedTextField(albumArtist, { albumArtist = it }, Modifier.fillMaxWidth(), label = { Text("앨범 아티스트") }, singleLine = true)
-            Text(if (track.fileName.endsWith(".mp3", true)) "MP3는 파일 안의 ID3 태그를 직접 수정한 뒤 다른 음악 앱에도 반영합니다. Android 쓰기 승인이 필요합니다." else "현재 파일 자체 태그 수정은 MP3만 지원합니다. FLAC/M4A는 잘못된 부분 변경을 하지 않으며 지원 추가 전까지 저장하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (track.fileName.endsWith(".mp3", true) || track.fileName.endsWith(".m4a", true)) "MP3/M4A는 파일 안의 태그를 직접 수정한 뒤 다른 음악 앱에도 반영합니다. Android 쓰기 승인이 필요합니다." else "현재 파일 자체 태그 수정은 MP3/M4A만 지원합니다. 지원하지 않는 형식은 잘못된 부분 변경을 하지 않으며 저장하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             message?.let { Text(it, color = if (it.startsWith("저장 실패")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
         }
     }
