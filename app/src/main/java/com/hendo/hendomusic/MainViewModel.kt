@@ -171,8 +171,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ?: error("재생목록 파일을 읽을 수 없습니다.")
             val playlist = PlaylistImportCodec.parse(name, contents)
             require(playlist.entries.isNotEmpty()) { "곡이 없는 재생목록입니다." }
-            val byFileName = uiState.value.tracks.associateBy { it.fileName.lowercase() }
-            val trackIds = playlist.entries.mapNotNull { byFileName[PlaylistImportCodec.fileName(it).lowercase()]?.id }.distinct()
+            val tracks = uiState.value.tracks
+            val byFileName = tracks.associateBy { it.fileName.lowercase() }
+            val byRelativePath = tracks.filter { it.relativePath != null }.associateBy { PlaylistImportCodec.normalizedPath("${it.relativePath}/${it.fileName}") }
+            val trackIds = playlist.entries.mapNotNull { entry ->
+                val path = PlaylistImportCodec.normalizedPath(entry)
+                byRelativePath[path]?.id
+                    ?: tracks.firstOrNull { path.endsWith("/${PlaylistImportCodec.normalizedPath(it.fileName)}") }?.id
+                    ?: byFileName[PlaylistImportCodec.fileName(entry).lowercase()]?.id
+            }.distinct()
             require(trackIds.isNotEmpty()) { "현재 음악 보관함과 일치하는 곡이 없습니다. 먼저 전체 곡을 새로고침해 주세요." }
             dao.createAlbumWithTracks(UserAlbumEntity(name = playlist.name, sortOrder = uiState.value.albums.count { it.folderId == null }), trackIds)
             val skipped = playlist.entries.size - trackIds.size
