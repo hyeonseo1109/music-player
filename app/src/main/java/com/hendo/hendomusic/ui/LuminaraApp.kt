@@ -15,11 +15,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -158,19 +162,23 @@ fun LuminaraApp(
                 val folderId = back.arguments?.getString("folderId")?.toLongOrNull()
                 val folder = ui.folders.firstOrNull { it.id == folderId }
                 val members = ui.albums.filter { it.folderId == folderId }.sortedBy { it.sortOrder }
+                var gridMode by rememberSaveable(folderId) { mutableStateOf(true) }
                 Column(Modifier.fillMaxSize()) {
-                    TopAppBar({ Text(folder?.name ?: "앨범 폴더") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } })
+                    TopAppBar({ Text(folder?.name ?: "앨범 폴더") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } }, actions = { IconButton({ gridMode = !gridMode }) { Icon(if (gridMode) Icons.Default.ViewList else Icons.Default.GridView, if (gridMode) "목록형 보기" else "앨범형 보기") } })
                     if (members.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 폴더에 담긴 앨범이 없습니다.") }
-                    else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    else if (gridMode) LazyVerticalGrid(columns = GridCells.Adaptive(132.dp), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        gridItems(members, key = { it.id }) { album ->
+                            Surface(Modifier.fillMaxWidth().clickable { nav.navigate("album/${album.id}") }, shape = RoundedCornerShape(18.dp), color = Color.Transparent) {
+                                Column(Modifier.padding(10.dp)) {
+                                    AlbumArtworkThumbnail(album, viewModel, Modifier.fillMaxWidth().aspectRatio(1f))
+                                    Row(verticalAlignment = Alignment.CenterVertically) { Text(album.name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.titleSmall); Icon(Icons.Default.ChevronRight, null) }
+                                    Text("앨범 열기", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    } else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(members, key = { it.id }) { album ->
-                            ListItem(
-                                headlineContent = { Text(album.name) },
-                                supportingContent = { Text("앨범 열기") },
-                                leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(52.dp)) },
-                                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
-                                modifier = Modifier.fillMaxWidth().clickable { nav.navigate("album/${album.id}") },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
+                            ListItem(headlineContent = { Text(album.name) }, supportingContent = { Text("앨범 열기") }, leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp)) }, trailingContent = { Icon(Icons.Default.ChevronRight, null) }, modifier = Modifier.fillMaxWidth().clickable { nav.navigate("album/${album.id}") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                         }
                     }
