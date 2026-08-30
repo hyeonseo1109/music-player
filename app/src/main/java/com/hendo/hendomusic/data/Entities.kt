@@ -68,6 +68,8 @@ data class AlbumFolderEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val sortOrder: Int,
+    /** Null follows the first contained album artwork; empty string intentionally shows the placeholder. */
+    val artworkUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -77,6 +79,7 @@ data class UserAlbumEntity(
     val name: String,
     val folderId: Long? = null,
     val sortOrder: Int,
+    /** Null follows the first track artwork; empty string intentionally shows the placeholder. */
     val artworkUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )

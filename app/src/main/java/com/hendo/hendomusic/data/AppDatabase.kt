@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [TrackEntity::class, LyricsEntity::class, LyricLineEntity::class, AlbumFolderEntity::class,
         UserAlbumEntity::class, AlbumTrackEntity::class, PlaybackHistoryEntity::class,
         PlaybackSessionEntity::class, PlaybackQueueEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,8 +27,13 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("UPDATE tracks SET customArtworkSource = 'USER' WHERE customArtworkUri IS NOT NULL")
             }
         }
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE album_folders ADD COLUMN artworkUri TEXT")
+            }
+        }
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext, AppDatabase::class.java, "luminara.db"
-        ).addMigrations(MIGRATION_1_2).fallbackToDestructiveMigration(false).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).fallbackToDestructiveMigration(false).build()
     }
 }

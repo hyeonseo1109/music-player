@@ -49,9 +49,11 @@ interface AppDao {
     @Query("SELECT * FROM user_albums WHERE name=:name AND folderId IS NULL LIMIT 1") suspend fun rootAlbumNamed(name: String): UserAlbumEntity?
     @Insert suspend fun insertAlbum(album: UserAlbumEntity): Long
     @Query("UPDATE user_albums SET name=:name WHERE id=:id") suspend fun renameAlbum(id: Long, name: String)
+    @Query("UPDATE user_albums SET artworkUri=:uri WHERE id=:id") suspend fun updateAlbumArtwork(id: Long, uri: String?)
     @Query("UPDATE user_albums SET folderId=:folderId, sortOrder=:sortOrder WHERE id=:id") suspend fun moveAlbum(id: Long, folderId: Long?, sortOrder: Int)
     @Transaction suspend fun reorderAlbums(ids: List<Long>, folderId: Long?) { ids.forEachIndexed { index, id -> moveAlbum(id, folderId, index) } }
     @Query("DELETE FROM user_albums WHERE id=:id") suspend fun deleteAlbum(id: Long)
+    @Transaction suspend fun deleteAlbumCompletely(id: Long) { clearAlbumTracks(id); deleteAlbum(id) }
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun addAlbumTrack(item: AlbumTrackEntity)
     @Query("SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM album_tracks WHERE albumId=:albumId") suspend fun nextAlbumTrackSortOrder(albumId: Long): Int
     @Query("UPDATE album_tracks SET sortOrder=:sortOrder WHERE albumId=:albumId AND trackId=:trackId") suspend fun updateAlbumTrackOrder(albumId: Long, trackId: String, sortOrder: Int)
@@ -80,6 +82,7 @@ interface AppDao {
     @Query("UPDATE album_folders SET sortOrder=:sortOrder WHERE id=:id") suspend fun updateFolderOrder(id: Long, sortOrder: Int)
     @Transaction suspend fun reorderFolders(ids: List<Long>) { ids.distinct().forEachIndexed { index, id -> updateFolderOrder(id, index) } }
     @Query("UPDATE album_folders SET name=:name WHERE id=:id") suspend fun renameFolder(id: Long, name: String)
+    @Query("UPDATE album_folders SET artworkUri=:uri WHERE id=:id") suspend fun updateFolderArtwork(id: Long, uri: String?)
     @Query("DELETE FROM album_folders WHERE id=:id") suspend fun deleteFolderRow(id: Long)
     @Query("SELECT * FROM user_albums WHERE folderId=:folderId ORDER BY sortOrder") suspend fun albumsInFolder(folderId: Long): List<UserAlbumEntity>
     @Transaction suspend fun createFolderWithAlbums(name: String, albumIds: List<Long>, sortOrder: Int): Long {

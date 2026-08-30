@@ -18,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.Space
 import android.widget.TextView
 import androidx.core.view.setPadding
 import androidx.media3.common.Player
@@ -84,11 +85,15 @@ class FloatingLyricsService : Service() {
         val controls = LinearLayout(this).apply {
             gravity = Gravity.CENTER
             addView(button(android.R.drawable.ic_media_previous) { controller?.seekToPreviousMediaItem() })
+            addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(if (controller?.isPlaying == true) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play) { controller?.let { if (it.isPlaying) it.pause() else it.play() }; collapseLater() })
+            addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(android.R.drawable.ic_media_next) { controller?.seekToNextMediaItem() })
+            addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(android.R.drawable.ic_menu_preferences) {
                 startActivity(Intent(this@FloatingLyricsService, com.hendo.hendomusic.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             })
+            addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(android.R.drawable.ic_menu_close_clear_cancel) { stopSelf() })
         }
         view.addView(controls)

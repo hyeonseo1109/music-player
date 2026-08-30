@@ -158,6 +158,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dao.reorderAlbums((root.map { it.id } + albumId).distinct(), null)
     }
     fun renameFolder(id: Long, name: String) = viewModelScope.launch { dao.renameFolder(id, name) }
+    fun renameAlbum(id: Long, name: String) = viewModelScope.launch { dao.renameAlbum(id, name) }
+    /** null restores automatic first-track artwork; an empty URI deliberately hides it. */
+    fun setAlbumArtwork(id: Long, uri: String?) = viewModelScope.launch { dao.updateAlbumArtwork(id, uri) }
+    /** null restores automatic collage artwork; an empty URI deliberately shows the placeholder. */
+    fun setFolderArtwork(id: Long, uri: String?) = viewModelScope.launch { dao.updateFolderArtwork(id, uri) }
+    fun deleteAlbum(id: Long) = viewModelScope.launch { dao.deleteAlbumCompletely(id) }
     fun dissolveFolder(id: Long) = viewModelScope.launch {
         dao.dissolveFolder(id, uiState.value.albums.count { it.folderId == null })
         normalizeRootAlbums()

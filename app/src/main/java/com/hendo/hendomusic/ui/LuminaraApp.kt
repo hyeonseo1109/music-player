@@ -93,7 +93,8 @@ fun LuminaraApp(
     }
     val nav = rememberNavController()
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
-    val showChrome = currentRoute == null || currentRoute in setOf("library", "albums", "settings")
+    // Album and folder lists keep the mini player available after leaving the full player.
+    val showChrome = currentRoute !in setOf("player", "nowLyrics/{trackId}", "lyricsSearch/{trackId}", "lyrics/{trackId}", "sync/{trackId}", "metadata/{trackId}", "queue")
     var librarySelection by remember { mutableStateOf<LibrarySelectionUi?>(null) }
     PurpleAtmosphere {
     Scaffold(
@@ -114,7 +115,7 @@ fun LuminaraApp(
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete, requestDeleteMany) { librarySelection = it } }
-            composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }) { kind -> nav.navigate("special/$kind") } }
+            composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }, { id -> nav.navigate("folder/$id") }) { kind -> nav.navigate("special/$kind") } }
             composable("album/{albumId}") { back ->
                 val id = back.arguments?.getString("albumId")?.toLongOrNull()
                 val album = ui.albums.firstOrNull { it.id == id }
@@ -146,8 +147,31 @@ fun LuminaraApp(
                                 )
                             }, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.DragHandle, "길게 눌러 순서 변경", Modifier.padding(start = 8.dp))
-                                MusicRow(track, false, { viewModel.play(track, localTracks) }, {}, {})
+                                MusicRow(track, false, { viewModel.play(track, localTracks); nav.navigate("player") }, {}, {})
                             }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+                        }
+                    }
+                }
+            }
+            composable("folder/{folderId}") { back ->
+                val folderId = back.arguments?.getString("folderId")?.toLongOrNull()
+                val folder = ui.folders.firstOrNull { it.id == folderId }
+                val members = ui.albums.filter { it.folderId == folderId }.sortedBy { it.sortOrder }
+                Column(Modifier.fillMaxSize()) {
+                    TopAppBar({ Text(folder?.name ?: "앨범 폴더") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } })
+                    if (members.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 폴더에 담긴 앨범이 없습니다.") }
+                    else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(members, key = { it.id }) { album ->
+                            ListItem(
+                                headlineContent = { Text(album.name) },
+                                supportingContent = { Text("앨범 열기") },
+                                leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(52.dp)) },
+                                trailingContent = { Icon(Icons.Default.ChevronRight, null) },
+                                modifier = Modifier.fillMaxWidth().clickable { nav.navigate("album/${album.id}") },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                         }
                     }
                 }
@@ -156,7 +180,7 @@ fun LuminaraApp(
                 val kind = back.arguments?.getString("kind")
                 val name = if (kind == "favorites") "좋아요한 곡" else "많이 들은 곡"
                 val specialTracks = if (kind == "favorites") ui.tracks.filter { it.isFavorite } else ui.tracks.filter { it.playCount > 0 }.sortedByDescending { it.playCount }
-                SpecialAlbumTracksScreen(name, specialTracks, viewModel) { nav.popBackStack() }
+                SpecialAlbumTracksScreen(name, specialTracks, viewModel, { nav.navigate("player") }) { nav.popBackStack() }
             }
             composable("settings") { SettingsScreen(ui, viewModel, requestMediaPermission, requestOverlay, chooseTree, choosePlaylist, exportPlaylist, onFloatingChanged) }
             composable("player") { NowPlayingScreen(playback, viewModel, nav, ui) }
@@ -175,7 +199,9 @@ fun LuminaraApp(
                 LyricsEditorScreen(trackId, viewModel, chooseLrc, { nav.popBackStack() }) { nav.navigate("sync/$trackId") }
             }
             composable("sync/{trackId}") { back ->
-                LyricsSyncScreen(back.arguments?.getString("trackId").orEmpty(), playback, viewModel) { nav.popBackStack() }
+                LyricsSyncScreen(back.arguments?.getString("trackId").orEmpty(), playback, viewModel) {
+                    nav.navigate("player") { popUpTo("library") { inclusive = false } }
+                }
             }
             composable("metadata/{trackId}") { back ->
                 MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite) { nav.popBackStack() }
@@ -295,12 +321,13 @@ fun LuminaraApp(
                 select = { toggleSelection(track) },
                 menu = { menuTrack = track },
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .35f))
             } }
             if (ui.settings.sort == "TITLE") NameIndexRail(ui.visibleTracks, listState)
         }
     }
     menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
-    if (selectedAlbumPicker) AlertDialog(onDismissRequest = { selectedAlbumPicker = false }, title = { Text("선택한 곡을 내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ selectedTracks.forEach { vm.addToAlbum(album.id, it.id) }; selectedIds = emptySet(); selectedAlbumPicker = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); selectedAlbumPicker = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ selectedAlbumPicker = false }) { Text("취소") } })
+    if (selectedAlbumPicker) AlertDialog(onDismissRequest = { selectedAlbumPicker = false }, title = { Text("선택한 곡을 내 앨범에 추가") }, text = { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else LazyColumn(Modifier.heightIn(max = 420.dp)) { items(ui.albums, key = { it.id }) { album -> TextButton({ selectedTracks.forEach { vm.addToAlbum(album.id, it.id) }; selectedIds = emptySet(); selectedAlbumPicker = false }, Modifier.fillMaxWidth()) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); selectedAlbumPicker = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ selectedAlbumPicker = false }) { Text("취소") } })
     if (deleteSelectedConfirm) AlertDialog(onDismissRequest = { deleteSelectedConfirm = false }, title = { Text("선택한 ${selectedTracks.size}곡을 삭제할까요?") }, text = { Text("기기 음악 파일도 삭제됩니다.") }, confirmButton = { TextButton({ requestDeleteMany(selectedTracks); selectedIds = emptySet(); deleteSelectedConfirm = false }) { Text("삭제") } }, dismissButton = { TextButton({ deleteSelectedConfirm = false }) { Text("취소") } })
 }
 
@@ -313,7 +340,7 @@ fun LuminaraApp(
     fun jump(letter: String) { selected = letter; val target = if (letter == "1") "#" else letter; val i = tracks.indexOfFirst { indexLabel(it.title) == target }; if (i >= 0) scope.launch { state.scrollToItem(i) } }
     Box(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp).pointerInput(Unit) { detectTapGestures(onPress = { visible = true; tryAwaitRelease() }) }) {
         selected?.let { Text(it, Modifier.align(Alignment.CenterStart).offset(x = (-58).dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp)).padding(12.dp), style = MaterialTheme.typography.headlineSmall) }
-        if (visible || state.isScrollInProgress) Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp).pointerInput(letters) { detectDragGestures(onDragStart = { offset -> jump(letters[(offset.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDrag = { change, _ -> change.consume(); jump(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDragEnd = { selected = null }, onDragCancel = { selected = null }) }) {
+        if (visible || state.isScrollInProgress) Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp).pointerInput(letters) { detectDragGestures(onDragStart = { offset -> jump(letters[(offset.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDrag = { change, _ -> change.consume(); jump(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDragEnd = {}, onDragCancel = {}) }) {
             letters.forEach { letter -> Text(letter, Modifier.clickable { jump(letter) }.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall) }
         }
     }
@@ -326,7 +353,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.GraphicEq, null, Modifier.size(64.dp), MaterialTheme.colorScheme.primary); Text("음악이 아직 없습니다", style = MaterialTheme.typography.titleLarge); Text("권한을 허용한 뒤 라이브러리를 검색하세요."); Button(scan) { Text("음악 검색") } }
 }
 
-@Composable private fun SpecialAlbumTracksScreen(name: String, tracks: List<TrackEntity>, viewModel: MainViewModel, back: () -> Unit) {
+@Composable private fun SpecialAlbumTracksScreen(name: String, tracks: List<TrackEntity>, viewModel: MainViewModel, openPlayer: () -> Unit, back: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(name) },
@@ -337,7 +364,8 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
                 items(tracks, key = { it.id }) { track ->
-                    MusicRow(track, false, { viewModel.play(track, tracks) }, {}, {})
+                    MusicRow(track, false, { viewModel.play(track, tracks); openPlayer() }, {}, {})
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                 }
             }
         }
