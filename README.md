@@ -27,7 +27,7 @@ HendoMusic은 Galaxy를 포함한 Android 10+ 기기에서 로컬 음원을 재�
 - 앨범커버 표시 우선순위 `USER > EMBEDDED > AUTO_SEARCH > PLACEHOLDER`, 가사 우선순위 `USER > AUTO_SEARCH > NONE`
 - Photo Picker·인터넷 결과 직접 선택으로 저장한 커버와 직접 입력·수정·LRC 가져오기·검색 결과 직접 선택으로 저장한 가사는 자동 검색이 덮어쓰지 않음
 - Supabase Anonymous Auth 가사 업로드/검색/싱크 줄 가져오기/추천/신고 UI와 RLS·중복 추천 constraint
-- Android 11+ MediaStore 파일 삭제/정보 쓰기 시스템 승인 Activity Result, 취소 시 무변경
+- Android 11+ MediaStore 파일 삭제/정보 쓰기 시스템 승인 Activity Result. 여러 곡 선택 삭제는 하나의 시스템 승인 요청으로 묶으며, 취소 시 무변경
 - 다크/라이트/시스템 테마, 화면 켜짐 유지와 DataStore 설정, Android 자동 백업 대상에 Room/DataStore 포함
 
 ## 구조

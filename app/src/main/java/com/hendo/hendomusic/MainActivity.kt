@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private data class PendingMetadata(val track: TrackEntity, val update: MetadataUpdate, val done: (String) -> Unit)
+    private data class PendingDelete(val tracks: List<TrackEntity>)
     private val viewModel: MainViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,13 +46,13 @@ class MainActivity : ComponentActivity() {
                 else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 onDispose { window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }
-            var pendingDelete by remember { mutableStateOf<TrackEntity?>(null) }
+            var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
             var pendingMetadata by remember { mutableStateOf<PendingMetadata?>(null) }
             val deleteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-                val track = pendingDelete
-                if (result.resultCode == Activity.RESULT_OK && track != null) {
-                    if (Build.VERSION.SDK_INT == 29) runCatching { contentResolver.delete(Uri.parse(track.uri), null, null) }
-                    viewModel.completeApprovedDelete(track.id)
+                val tracks = pendingDelete?.tracks.orEmpty()
+                if (result.resultCode == Activity.RESULT_OK && tracks.isNotEmpty()) {
+                    if (Build.VERSION.SDK_INT == 29) tracks.forEach { track -> runCatching { contentResolver.delete(Uri.parse(track.uri), null, null) } }
+                    tracks.forEach { track -> viewModel.completeApprovedDelete(track.id) }
                 }
                 pendingDelete = null
             }
@@ -114,7 +115,7 @@ class MainActivity : ComponentActivity() {
                         else stopService(Intent(this, FloatingLyricsService::class.java))
                     },
                     requestDelete = { track ->
-                        pendingDelete = track
+                        pendingDelete = PendingDelete(listOf(track))
                         if (Build.VERSION.SDK_INT >= 30) {
                             val request = MediaStore.createDeleteRequest(contentResolver, listOf(Uri.parse(track.uri)))
                             deleteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
@@ -125,6 +126,22 @@ class MainActivity : ComponentActivity() {
                             } catch (security: RecoverableSecurityException) {
                                 deleteApproval.launch(IntentSenderRequest.Builder(security.userAction.actionIntent.intentSender).build())
                             }
+                        }
+                    },
+                    requestDeleteMany = { tracks ->
+                        if (tracks.isEmpty()) return@LuminaraApp
+                        pendingDelete = PendingDelete(tracks)
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            val request = MediaStore.createDeleteRequest(contentResolver, tracks.map { Uri.parse(it.uri) })
+                            deleteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                        } else {
+                            // Android 10 has no batch delete request. Delete only entries the
+                            // provider accepts, leaving denied files visible in the library.
+                            tracks.forEach { track ->
+                                runCatching { contentResolver.delete(Uri.parse(track.uri), null, null) }
+                                    .onSuccess { if (it > 0) viewModel.completeApprovedDelete(track.id) }
+                            }
+                            pendingDelete = null
                         }
                     },
                     requestMetadataWrite = { track, update, done ->

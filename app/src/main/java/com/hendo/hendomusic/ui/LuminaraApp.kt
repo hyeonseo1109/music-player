@@ -67,6 +67,7 @@ fun LuminaraApp(
     exportPlaylist: (UserAlbumEntity) -> Unit,
     onFloatingChanged: (Boolean) -> Unit,
     requestDelete: (TrackEntity) -> Unit,
+    requestDeleteMany: (List<TrackEntity>) -> Unit,
     requestMetadataWrite: (TrackEntity, MetadataUpdate, (String) -> Unit) -> Unit,
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
@@ -100,7 +101,7 @@ fun LuminaraApp(
         },
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
-            composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete) }
+            composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete, requestDeleteMany) }
             composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }) { kind -> nav.navigate("special/$kind") } }
             composable("album/{albumId}") { back ->
                 val id = back.arguments?.getString("albumId")?.toLongOrNull()
@@ -223,7 +224,7 @@ fun LuminaraApp(
     NavigationBarItem(selected = current == route, onClick = { nav.navigate(route) { launchSingleTop = true; popUpTo("library") } }, icon = { Icon(icon, null) }, label = { Text(label) })
 }
 
-@Composable private fun LibraryScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit) {
+@Composable private fun LibraryScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, requestDeleteMany: (List<TrackEntity>) -> Unit) {
     var sortOpen by remember { mutableStateOf(false) }
     var menuTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var selectedAlbumPicker by remember { mutableStateOf(false) }
@@ -285,7 +286,7 @@ fun LuminaraApp(
     }
     menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
     if (selectedAlbumPicker) AlertDialog(onDismissRequest = { selectedAlbumPicker = false }, title = { Text("선택한 곡을 내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ selectedTracks.forEach { vm.addToAlbum(album.id, it.id) }; selectedIds = emptySet(); selectedAlbumPicker = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); selectedAlbumPicker = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ selectedAlbumPicker = false }) { Text("취소") } })
-    if (deleteSelectedConfirm) AlertDialog(onDismissRequest = { deleteSelectedConfirm = false }, title = { Text("선택한 ${selectedTracks.size}곡을 삭제할까요?") }, text = { Text("기기 음악 파일도 삭제됩니다.") }, confirmButton = { TextButton({ vm.deleteSelectedTracks(selectedTracks.map { it.id }); selectedIds = emptySet(); deleteSelectedConfirm = false }) { Text("삭제") } }, dismissButton = { TextButton({ deleteSelectedConfirm = false }) { Text("취소") } })
+    if (deleteSelectedConfirm) AlertDialog(onDismissRequest = { deleteSelectedConfirm = false }, title = { Text("선택한 ${selectedTracks.size}곡을 삭제할까요?") }, text = { Text("기기 음악 파일도 삭제됩니다.") }, confirmButton = { TextButton({ requestDeleteMany(selectedTracks); selectedIds = emptySet(); deleteSelectedConfirm = false }) { Text("삭제") } }, dismissButton = { TextButton({ deleteSelectedConfirm = false }) { Text("취소") } })
 }
 
 @Composable private fun BoxScope.NameIndexRail(tracks: List<TrackEntity>, state: androidx.compose.foundation.lazy.LazyListState) {
