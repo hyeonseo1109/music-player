@@ -153,14 +153,15 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
         headlineContent = { Text(name) }, supportingContent = { Text("${count}곡 · 고정 시스템 앨범") },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         modifier = Modifier.clickable(onClick = open),
+        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
     )
 }
 
 @Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier, dragModifier: Modifier = Modifier, viewModel: MainViewModel, open: () -> Unit) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
-    Surface(modifier.fillMaxWidth().purpleGlass(18).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+    Surface(modifier.fillMaxWidth().clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.size(48.dp).padding(end = 10.dp))
+            AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).padding(end = 10.dp))
             Icon(Icons.Default.DragHandle, "이 앨범을 길게 눌러 이동", dragModifier, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(album.name, style = MaterialTheme.typography.titleMedium); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall) }
         }
@@ -169,17 +170,17 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 
 @Composable private fun AlbumTile(album: UserAlbumEntity, viewModel: MainViewModel, open: () -> Unit) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
-    Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+    Surface(Modifier.fillMaxWidth().clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Column(Modifier.padding(10.dp)) {
-            AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.fillMaxWidth().aspectRatio(1f), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            AsyncImage(tracks.firstOrNull()?.displayArtworkUri(), null, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f).clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             Spacer(Modifier.height(8.dp)); Text(album.name, maxLines = 1, style = MaterialTheme.typography.titleSmall); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable private fun FolderTile(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, click: () -> Unit) {
-    Surface(Modifier.fillMaxWidth().purpleGlass(18).clickable(onClick = click), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Column(Modifier.padding(12.dp)) { FolderArtworkGrid(members, viewModel, Modifier.fillMaxWidth().aspectRatio(1f)); Spacer(Modifier.height(8.dp)); Text(folder.name, maxLines = 1); Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall) }
+    Surface(Modifier.fillMaxWidth().clickable(onClick = click), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+        Column(Modifier.padding(12.dp)) { FolderArtworkGrid(members, viewModel, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f)); Spacer(Modifier.height(8.dp)); Text(folder.name, maxLines = 1); Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall) }
     }
 }
 @Composable private fun FolderArtworkGrid(members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier) {
@@ -198,9 +199,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 }
 
 @Composable private fun FolderCard(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier, click: () -> Unit) {
-    Surface(modifier.fillMaxWidth().purpleGlass(20).clickable(onClick = click), shape = RoundedCornerShape(20.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
+    Surface(modifier.fillMaxWidth().clickable(onClick = click), shape = RoundedCornerShape(20.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            FolderArtworkGrid(members, viewModel = viewModel, modifier = Modifier.size(64.dp))
+            FolderArtworkGrid(members, viewModel = viewModel, modifier = Modifier.size(58.dp))
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(folder.name, style = MaterialTheme.typography.titleMedium)
                 Text("${members.size}개 앨범 · ${members.take(3).joinToString(" · ") { it.name }}", maxLines = 1, style = MaterialTheme.typography.bodySmall)

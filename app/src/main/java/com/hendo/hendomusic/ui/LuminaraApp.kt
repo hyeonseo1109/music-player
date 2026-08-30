@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -54,6 +55,14 @@ import com.hendo.hendomusic.playback.PlaybackState
 import kotlin.math.roundToLong
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+
+private data class LibrarySelectionUi(
+    val count: Int,
+    val play: () -> Unit,
+    val append: () -> Unit,
+    val addToAlbum: () -> Unit,
+    val delete: () -> Unit,
+)
 
 @Composable
 fun LuminaraApp(
@@ -85,23 +94,26 @@ fun LuminaraApp(
     val nav = rememberNavController()
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
     val showChrome = currentRoute == null || currentRoute in setOf("library", "albums", "settings")
+    var librarySelection by remember { mutableStateOf<LibrarySelectionUi?>(null) }
     PurpleAtmosphere {
     Scaffold(
         containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onBackground,
         bottomBar = {
             if (showChrome) Column {
-                if (playback.current != null) MiniPlayer(playback, { nav.navigate("player") }, viewModel.player::toggle, viewModel.player::next)
+                if (librarySelection != null) {
+                    LibrarySelectionBar(librarySelection!!)
+                } else if (playback.current != null) MiniPlayer(playback, { nav.navigate("player") }, viewModel.player::toggle, viewModel.player::next)
                 NavigationBar(containerColor = Color(0xE606030C), tonalElevation = 0.dp) {
-                    NavItem(nav, currentRoute, "library", "전체 곡", Icons.Default.LibraryMusic)
-                    NavItem(nav, currentRoute, "albums", "내 앨범", Icons.Default.Album)
-                    NavItem(nav, currentRoute, "settings", "설정", Icons.Default.Settings)
+                    NavItem(nav, currentRoute, "library", "전체 곡", Icons.Default.LibraryMusic) { librarySelection = null }
+                    NavItem(nav, currentRoute, "albums", "내 앨범", Icons.Default.Album) { librarySelection = null }
+                    NavItem(nav, currentRoute, "settings", "설정", Icons.Default.Settings) { librarySelection = null }
                 }
             }
         },
     ) { padding ->
         NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
-            composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete, requestDeleteMany) }
+            composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete, requestDeleteMany) { librarySelection = it } }
             composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }) { kind -> nav.navigate("special/$kind") } }
             composable("album/{albumId}") { back ->
                 val id = back.arguments?.getString("albumId")?.toLongOrNull()
@@ -220,11 +232,11 @@ fun LuminaraApp(
     } }
 }
 
-@Composable private fun RowScope.NavItem(nav: NavHostController, current: String?, route: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    NavigationBarItem(selected = current == route, onClick = { nav.navigate(route) { launchSingleTop = true; popUpTo("library") } }, icon = { Icon(icon, null) }, label = { Text(label) })
+@Composable private fun RowScope.NavItem(nav: NavHostController, current: String?, route: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, beforeNavigate: () -> Unit = {}) {
+    NavigationBarItem(selected = current == route, onClick = { beforeNavigate(); nav.navigate(route) { launchSingleTop = true; popUpTo("library") } }, icon = { Icon(icon, null) }, label = { Text(label) })
 }
 
-@Composable private fun LibraryScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, requestDeleteMany: (List<TrackEntity>) -> Unit) {
+@Composable private fun LibraryScreen(ui: com.hendo.hendomusic.MainUiState, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, requestDeleteMany: (List<TrackEntity>) -> Unit, updateSelection: (LibrarySelectionUi?) -> Unit) {
     var sortOpen by remember { mutableStateOf(false) }
     var menuTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var selectedAlbumPicker by remember { mutableStateOf(false) }
@@ -238,6 +250,20 @@ fun LuminaraApp(
         selectedTracks.firstOrNull()?.let { vm.play(it, selectedTracks) }
         selectedIds = emptySet()
     }
+    LaunchedEffect(selectedTracks) {
+        updateSelection(
+            selectedTracks.takeIf { it.isNotEmpty() }?.let { tracks ->
+                LibrarySelectionUi(
+                    count = tracks.size,
+                    play = ::playSelectedTracks,
+                    append = { tracks.forEach(vm.player::append); selectedIds = emptySet() },
+                    addToAlbum = { selectedAlbumPicker = true },
+                    delete = { deleteSelectedConfirm = true },
+                )
+            },
+        )
+    }
+    DisposableEffect(Unit) { onDispose { updateSelection(null) } }
     // The search results are debounced. Keep the IME's composition and cursor locally
     // instead of feeding the delayed value back into a Korean text field.
     var searchField by remember { mutableStateOf(TextFieldValue(ui.query, TextRange(ui.query.length))) }
@@ -249,23 +275,12 @@ fun LuminaraApp(
             Text("내 음악", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             IconButton(onClick = { vm.scan() }) { Icon(Icons.Default.Refresh, "다시 검색") }
         }
-        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(18.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            if (selectedTracks.isNotEmpty()) {
-                Text("${selectedTracks.size}곡 선택됨", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = ::playSelectedTracks) { Icon(Icons.Default.PlayArrow, null); Text("선택 재생") }
-                    TextButton(onClick = { selectedTracks.forEach(vm.player::append); selectedIds = emptySet() }) { Icon(Icons.Default.PlaylistAdd, null); Text("재생목록 추가") }
-                    IconButton(onClick = { selectedAlbumPicker = true }) { Icon(Icons.Default.Add, "내 앨범에 추가") }
-                    IconButton(onClick = { deleteSelectedConfirm = true }) { Icon(Icons.Default.DeleteOutline, "선택한 곡 삭제") }
-                    IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Default.Close, "선택 해제") }
-                }
-            } else {
+        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).onFocusChanged { if (it.isFocused) selectedIds = emptySet() }, shape = RoundedCornerShape(18.dp))
+        if (selectedTracks.isEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("${ui.visibleTracks.size}곡", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box { TextButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, null); Text(sortLabel(ui.settings.sort)) }
                     DropdownMenu(sortOpen, { sortOpen = false }) { listOf("TITLE" to "이름 순", "RECENT" to "최근 추가", "PLAYED" to "최근 들은 순", "COUNT" to "많이 들은 순").forEach { (k, v) -> DropdownMenuItem({ Text(v) }, { vm.setSort(k); sortOpen = false }) } }
                 }
-            }
         }
         if (ui.scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
         ui.scanMessage?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall) }
@@ -370,6 +385,31 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 
 @Composable private fun MenuLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, click: () -> Unit) = ListItem({ Text(text) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(onClick = click))
 
+@Composable private fun LibrarySelectionBar(selection: LibrarySelectionUi) {
+    Surface(color = Color.Transparent, modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp).purpleGlass(18)) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("${selection.count}곡", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+            VerticalDivider(Modifier.height(22.dp).padding(horizontal = 4.dp))
+            SelectionAction(Icons.Default.PlayArrow, "재생", selection.play)
+            SelectionAction(Icons.Default.PlaylistAdd, "현재재생목록 추가", selection.append)
+            SelectionAction(Icons.Default.Add, "내앨범 추가", selection.addToAlbum)
+            SelectionAction(Icons.Default.DeleteOutline, "삭제", selection.delete, destructive = true)
+        }
+    }
+}
+
+@Composable private fun SelectionAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, click: () -> Unit, destructive: Boolean = false) {
+    TextButton(onClick = click, contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) {
+        Icon(icon, null, Modifier.size(16.dp), tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(2.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    }
+}
+
 @Composable private fun MetadataDialog(track: TrackEntity, vm: MainViewModel, close: () -> Unit) {
     var title by remember { mutableStateOf(track.title) }; var artist by remember { mutableStateOf(track.artist) }; var album by remember { mutableStateOf(track.album) }; var albumArtist by remember { mutableStateOf(track.albumArtist.orEmpty()) }; var message by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = close, title = { Text("곡 정보 수정") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(title, { title = it }, label = { Text("곡 제목") }); OutlinedTextField(artist, { artist = it }, label = { Text("아티스트") }); OutlinedTextField(album, { album = it }, label = { Text("앨범") }); OutlinedTextField(albumArtist, { albumArtist = it }, label = { Text("앨범 아티스트") }); Text("Android의 Scoped Storage 승인 흐름을 사용하며, 공급자가 태그 쓰기를 막으면 저장되지 않습니다.", style = MaterialTheme.typography.bodySmall); message?.let { Text(it) } } }, confirmButton = { TextButton({ vm.updateMetadata(track, title, artist, album, albumArtist.ifBlank { null }) { message = it } }) { Text("저장") } }, dismissButton = { TextButton(close) { Text("취소") } })
@@ -414,7 +454,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         // The playback controls are outside the weighted content region, so they remain pinned
         // to the bottom even when no lyrics have been registered.
         Row { IconButton({ track?.let { vm.toggleFavorite(it.id) } }) { Icon(if(track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "좋아요") }; IconButton({ addAlbumOpen = true }) { Icon(Icons.Default.Add, "내 앨범에 추가") }; IconButton({ nav.navigate("queue") }) { Icon(Icons.Default.QueueMusic, "현재 재생목록") } }
-        Spacer(Modifier.height(sectionGap)); Slider(value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { vm.player.seekTo(it.roundToLong()) }, valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f), modifier = Modifier.height(28.dp))
+        Spacer(Modifier.height(if (compactLandscape) 6.dp else 8.dp)); Slider(value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)), onValueChange = { vm.player.seekTo(it.roundToLong()) }, valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f), modifier = Modifier.height(28.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(formatTime(state.positionMs)); Text(formatTime(state.durationMs)) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
             IconButton(vm.player::toggleShuffle) { Icon(Icons.Default.Shuffle, null, tint = if(state.shuffle) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
@@ -541,7 +581,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 @Composable private fun Section(text: String) { Text(text, Modifier.padding(start = 20.dp, top = 22.dp, bottom = 6.dp), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
 @Composable private fun Choice(text: String, selected: Boolean, click: () -> Unit) = Row(Modifier.fillMaxWidth().clickable(onClick = click).padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { RadioButton(selected, click); Text(text, Modifier.padding(start = 8.dp)) }
 @Composable private fun SwitchLine(text: String, value: Boolean, changed: (Boolean) -> Unit) = Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text(text, Modifier.weight(1f)); Switch(value, changed) }
-@Composable private fun SettingLine(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, click: () -> Unit) = ListItem(headlineContent = { Text(title) }, supportingContent = { if(subtitle.isNotBlank()) Text(subtitle) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(onClick = click))
+@Composable private fun SettingLine(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, click: () -> Unit) = ListItem(headlineContent = { Text(title) }, supportingContent = { if(subtitle.isNotBlank()) Text(subtitle) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.clickable(onClick = click), colors = ListItemDefaults.colors(containerColor = Color.Transparent))
 
 @Composable private fun LyricsEditor(trackId: String, vm: MainViewModel, nav: NavHostController) {
     var text by remember { mutableStateOf("") }; var synced by remember { mutableStateOf<List<SyncedLyricLine>>(emptyList()) }
