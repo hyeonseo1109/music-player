@@ -123,7 +123,11 @@ class FloatingLyricsService : Service() {
     private fun updateLyricText(positionMs: Long) {
         val text: CharSequence = if (syncedLyrics.isNotEmpty()) {
             val active = LrcCodec.activeIndex(syncedLyrics, positionMs).coerceAtLeast(0)
-            val lines = syncedLyrics.drop(active).take(floatingLineCount).map { it.text }
+            // Lines with the same stamp are one multilingual lyric block (original/pronunciation/translation).
+            val stamp = syncedLyrics[active].startTimeMs
+            val activeBlock = syncedLyrics.drop(active).takeWhile { it.startTimeMs == stamp }.map { it.text }
+            val following = syncedLyrics.drop(active + activeBlock.size).take((floatingLineCount - activeBlock.size).coerceAtLeast(0)).map { it.text }
+            val lines = (activeBlock + following).take(floatingLineCount)
             SpannableString(lines.joinToString("\n")).apply {
                 lines.firstOrNull()?.length?.takeIf { it > 0 }?.let { setSpan(ForegroundColorSpan(Color.rgb(190, 166, 255)), 0, it, 0) }
             }

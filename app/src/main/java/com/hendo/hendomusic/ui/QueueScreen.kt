@@ -5,7 +5,7 @@ package com.hendo.hendomusic.ui
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -80,12 +80,12 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
                     Row(Modifier.heightIn(min = 72.dp).clickable { viewModel.player.playAt(index) }, verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.DragHandle,
-                            "길게 눌러 순서 변경",
+                            "드래그하여 순서 변경",
                             Modifier
                                 .size(52.dp)
                                 .padding(14.dp)
                                 .pointerInput(item.mediaId, localQueue.size) {
-                                    detectDragGesturesAfterLongPress(
+                                    detectDragGestures(
                                         onDragStart = {
                                             draggedId = item.mediaId; dragOffset = 0f
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)

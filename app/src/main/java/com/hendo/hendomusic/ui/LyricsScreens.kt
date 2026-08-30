@@ -183,6 +183,7 @@ fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainVi
     var lines by remember { mutableStateOf<List<String>>(emptyList()) }
     var stamps by remember { mutableStateOf<Map<Int, Long>>(emptyMap()) }
     var index by remember { mutableIntStateOf(0) }
+    var groupSize by remember { mutableIntStateOf(1) }
     var loaded by remember { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
     var confirmBack by remember { mutableStateOf(false) }
@@ -207,7 +208,8 @@ fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainVi
             lines.getOrNull(index + 1)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index++ }) }
         }
         Row { IconButton({ viewModel.player.seekTo((playback.positionMs - 3_000).coerceAtLeast(0)) }) { Icon(Icons.Default.Replay5, "3초 뒤로") }; FilledIconButton(viewModel.player::toggle) { Icon(if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "재생/일시정지") }; IconButton({ viewModel.player.seekTo(playback.positionMs + 3_000) }) { Icon(Icons.Default.Forward5, "3초 앞으로") } }
-        Row(verticalAlignment = Alignment.CenterVertically) { OutlinedButton({ index = (index - 1).coerceAtLeast(0) }) { Text("이전 줄") }; Button({ if (lines.isNotEmpty()) { stamps = stamps + (index to playback.positionMs); dirty = true; index = (index + 1).coerceAtMost(lines.lastIndex) } }, Modifier.padding(horizontal = 8.dp)) { Text(if (stamps.containsKey(index)) "현재 줄 다시 지정" else "현재 줄 싱크") }; OutlinedButton({ index = (index + 1).coerceAtMost(lines.lastIndex.coerceAtLeast(0)) }) { Text("다음 줄") } }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("한 번에"); (1..3).forEach { count -> FilterChip(groupSize == count, { groupSize = count }, { Text("${count}줄") }, Modifier.padding(start = 4.dp)) } }
+        Row(verticalAlignment = Alignment.CenterVertically) { OutlinedButton({ index = (index - groupSize).coerceAtLeast(0) }) { Text("이전") }; Button({ if (lines.isNotEmpty()) { val targets = index until (index + groupSize).coerceAtMost(lines.size); stamps = stamps + targets.associateWith { playback.positionMs }; dirty = true; index = (index + groupSize).coerceAtMost(lines.lastIndex) } }, Modifier.padding(horizontal = 8.dp)) { Text("${groupSize}줄 싱크") }; OutlinedButton({ index = (index + groupSize).coerceAtMost(lines.lastIndex.coerceAtLeast(0)) }) { Text("다음") } }
         Button({ val result = lines.mapIndexed { i, text -> SyncedLyricLine("$trackId:$i", stamps[i] ?: 0, text) }; viewModel.saveLyrics(trackId, lines.joinToString("\n"), result, if (staged != null) LyricsSource.USER_SEARCH else LyricsSource.USER_MANUAL); viewModel.stageLyrics(null); back() }, enabled = lines.isNotEmpty() && stamps.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
         TextButton(::leave) { Text("취소") }
     }
