@@ -65,6 +65,7 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
     implementation("org.jsoup:jsoup:1.18.3")
+    implementation("com.mpatric:mp3agic:0.9.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

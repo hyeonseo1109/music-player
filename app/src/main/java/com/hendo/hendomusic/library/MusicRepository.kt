@@ -11,6 +11,9 @@ import com.hendo.hendomusic.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import com.mpatric.mp3agic.Mp3File
+import com.mpatric.mp3agic.ID3v24Tag
+import java.io.File
 import java.security.MessageDigest
 
 data class ScanResult(val found: Int, val addedOrUpdated: Int, val removed: Int, val errors: Int, val removedTrackIds: List<String> = emptyList())
@@ -112,6 +115,11 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
     suspend fun track(id: String) = dao.track(id)
     suspend fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
         withContext(Dispatchers.IO) {
+            if (track.fileName.endsWith(".mp3", ignoreCase = true)) {
+                rewriteMp3Tags(track, title, artist, album, albumArtist)
+                dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
+                return@withContext
+            }
             if (track.mediaStoreId != null) {
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, title); put(MediaStore.Audio.Media.ARTIST, artist); put(MediaStore.Audio.Media.ALBUM, album)
@@ -130,6 +138,24 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             } else throw UnsupportedOperationException("선택한 문서 공급자는 표준 태그 쓰기를 지원하지 않습니다.")
             dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
         }
+    }
+
+    /** Rewrites MP3 ID3v2 tags through a temporary file, never editing the input stream in-place. */
+    private fun rewriteMp3Tags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
+        val source = File.createTempFile("hendo-source-", ".mp3", context.cacheDir)
+        val rewritten = File.createTempFile("hendo-rewritten-", ".mp3", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(track.uri))?.use { input -> source.outputStream().use { input.copyTo(it) } }
+                ?: error("원본 MP3를 읽을 수 없습니다.")
+            val mp3 = Mp3File(source.absolutePath)
+            val tag = (mp3.id3v2Tag as? ID3v24Tag) ?: ID3v24Tag()
+            tag.title = title; tag.artist = artist; tag.album = album; tag.albumArtist = albumArtist
+            mp3.id3v2Tag = tag
+            mp3.save(rewritten.absolutePath)
+            context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output -> rewritten.inputStream().use { it.copyTo(output) } }
+                ?: error("이 저장소는 MP3 파일 쓰기를 지원하지 않습니다.")
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
+        } finally { source.delete(); rewritten.delete() }
     }
 
     private suspend fun preserveAppState(scanned: List<TrackEntity>): List<TrackEntity> {

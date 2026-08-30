@@ -85,7 +85,7 @@ fun MetadataEditorScreen(
             OutlinedTextField(artist, { artist = it }, Modifier.fillMaxWidth(), label = { Text("아티스트") }, singleLine = true)
             OutlinedTextField(album, { album = it }, Modifier.fillMaxWidth(), label = { Text("앨범") }, singleLine = true)
             OutlinedTextField(albumArtist, { albumArtist = it }, Modifier.fillMaxWidth(), label = { Text("앨범 아티스트") }, singleLine = true)
-            Text("파일 공급자와 형식이 허용하는 경우에만 MediaStore metadata를 변경합니다. Android에는 MP3/FLAC embedded tag를 범용으로 안전하게 다시 쓰는 공식 API가 없어 Room-only 변경은 하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (track.fileName.endsWith(".mp3", true)) "MP3는 파일 안의 ID3 태그를 직접 수정한 뒤 다른 음악 앱에도 반영합니다. Android 쓰기 승인이 필요합니다." else "현재 파일 자체 태그 수정은 MP3만 지원합니다. FLAC/M4A는 잘못된 부분 변경을 하지 않으며 지원 추가 전까지 저장하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             message?.let { Text(it, color = if (it.startsWith("저장 실패")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
         }
     }
