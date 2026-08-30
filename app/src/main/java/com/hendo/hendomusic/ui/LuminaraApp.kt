@@ -280,10 +280,12 @@ fun LuminaraApp(
     val scope = rememberCoroutineScope()
     val letters = listOf("#", "1", "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "🌐")
     var selected by remember { mutableStateOf<String?>(null) }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(selected) { if (selected != null) { visible = true; kotlinx.coroutines.delay(3_000); if (selected != null) { selected = null; visible = false } } }
     fun jump(letter: String) { selected = letter; val target = if (letter == "1") "#" else letter; val i = tracks.indexOfFirst { indexLabel(it.title) == target }; if (i >= 0) scope.launch { state.scrollToItem(i) } }
-    Box(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp)) {
+    Box(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp).pointerInput(Unit) { detectTapGestures(onPress = { visible = true; tryAwaitRelease() }) }) {
         selected?.let { Text(it, Modifier.align(Alignment.CenterStart).offset(x = (-58).dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp)).padding(12.dp), style = MaterialTheme.typography.headlineSmall) }
-        Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp).pointerInput(letters) { detectDragGestures(onDragStart = { offset -> jump(letters[(offset.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDrag = { change, _ -> change.consume(); jump(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDragEnd = { selected = null }, onDragCancel = { selected = null }) }) {
+        if (visible || state.isScrollInProgress) Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp).pointerInput(letters) { detectDragGestures(onDragStart = { offset -> jump(letters[(offset.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDrag = { change, _ -> change.consume(); jump(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDragEnd = { selected = null }, onDragCancel = { selected = null }) }) {
             letters.forEach { letter -> Text(letter, Modifier.clickable { jump(letter) }.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall) }
         }
     }
