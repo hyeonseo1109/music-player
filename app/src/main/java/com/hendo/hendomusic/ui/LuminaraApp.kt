@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.media3.common.Player
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -215,6 +216,7 @@ fun LuminaraApp(
     var menuTrack by remember { mutableStateOf<TrackEntity?>(null) }
     var selectedAlbumPicker by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var deleteSelectedConfirm by remember { mutableStateOf(false) }
     val selectedTracks = ui.visibleTracks.filter { it.id in selectedIds }
     fun toggleSelection(track: TrackEntity) {
         selectedIds = if (track.id in selectedIds) selectedIds - track.id else selectedIds + track.id
@@ -242,6 +244,7 @@ fun LuminaraApp(
                     TextButton(onClick = ::playSelectedTracks) { Icon(Icons.Default.PlayArrow, null); Text("선택 재생") }
                     TextButton(onClick = { selectedTracks.forEach(vm.player::append); selectedIds = emptySet() }) { Icon(Icons.Default.PlaylistAdd, null); Text("재생목록 추가") }
                     IconButton(onClick = { selectedAlbumPicker = true }) { Icon(Icons.Default.Add, "내 앨범에 추가") }
+                    IconButton(onClick = { deleteSelectedConfirm = true }) { Icon(Icons.Default.DeleteOutline, "선택한 곡 삭제") }
                     IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Default.Close, "선택 해제") }
                 }
             } else {
@@ -270,13 +273,19 @@ fun LuminaraApp(
     }
     menuTrack?.let { TrackMenu(it, ui, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
     if (selectedAlbumPicker) AlertDialog(onDismissRequest = { selectedAlbumPicker = false }, title = { Text("선택한 곡을 내 앨범에 추가") }, text = { Column { if (ui.albums.isEmpty()) Text("아직 내 앨범이 없습니다.") else ui.albums.forEach { album -> TextButton({ selectedTracks.forEach { vm.addToAlbum(album.id, it.id) }; selectedIds = emptySet(); selectedAlbumPicker = false }) { Text(album.name) } } } }, confirmButton = { TextButton({ vm.createAlbum("새 앨범"); selectedAlbumPicker = false }) { Icon(Icons.Default.Add, null); Text("앨범 추가") } }, dismissButton = { TextButton({ selectedAlbumPicker = false }) { Text("취소") } })
+    if (deleteSelectedConfirm) AlertDialog(onDismissRequest = { deleteSelectedConfirm = false }, title = { Text("선택한 ${selectedTracks.size}곡을 삭제할까요?") }, text = { Text("기기 음악 파일도 삭제됩니다.") }, confirmButton = { TextButton({ vm.deleteSelectedTracks(selectedTracks.map { it.id }); selectedIds = emptySet(); deleteSelectedConfirm = false }) { Text("삭제") } }, dismissButton = { TextButton({ deleteSelectedConfirm = false }) { Text("취소") } })
 }
 
 @Composable private fun BoxScope.NameIndexRail(tracks: List<TrackEntity>, state: androidx.compose.foundation.lazy.LazyListState) {
     val scope = rememberCoroutineScope()
-    val letters = listOf("#", "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "🌐")
-    Column(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp)) {
-        letters.forEach { letter -> Text(letter, Modifier.clickable { val i = tracks.indexOfFirst { indexLabel(it.title) == letter }; if (i >= 0) scope.launch { state.animateScrollToItem(i) } }.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall) }
+    val letters = listOf("#", "1", "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "🌐")
+    var selected by remember { mutableStateOf<String?>(null) }
+    fun jump(letter: String) { selected = letter; val target = if (letter == "1") "#" else letter; val i = tracks.indexOfFirst { indexLabel(it.title) == target }; if (i >= 0) scope.launch { state.scrollToItem(i) } }
+    Box(Modifier.align(Alignment.CenterEnd).padding(end = 5.dp)) {
+        selected?.let { Text(it, Modifier.align(Alignment.CenterStart).offset(x = (-58).dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp)).padding(12.dp), style = MaterialTheme.typography.headlineSmall) }
+        Column(Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f), RoundedCornerShape(20.dp)).padding(vertical = 6.dp).pointerInput(letters) { detectDragGestures(onDragStart = { offset -> jump(letters[(offset.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDrag = { change, _ -> change.consume(); jump(letters[(change.position.y / size.height * letters.size).toInt().coerceIn(0, letters.lastIndex)]) }, onDragEnd = { selected = null }, onDragCancel = { selected = null }) }) {
+            letters.forEach { letter -> Text(letter, Modifier.clickable { jump(letter) }.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall) }
+        }
     }
 }
 private fun indexLabel(title: String): String { val c = title.trim().firstOrNull() ?: return "#"; return when { c.isDigit() || !c.isLetter() -> "#"; c in 'A'..'Z' || c in 'a'..'z' -> c.uppercaseChar().toString(); c in '가'..'깋' -> "ㄱ"; c in '나'..'닣' -> "ㄴ"; c in '다'..'딯' -> "ㄷ"; c in '라'..'맇' -> "ㄹ"; c in '마'..'밓' -> "ㅁ"; c in '바'..'빟' -> "ㅂ"; c in '사'..'앃' -> "ㅅ"; c in '아'..'잏' -> "ㅇ"; c in '자'..'짛' -> "ㅈ"; c in '차'..'칳' -> "ㅊ"; c in '카'..'킿' -> "ㅋ"; c in '타'..'팋' -> "ㅌ"; c in '파'..'핗' -> "ㅍ"; c in '하'..'힣' -> "ㅎ"; else -> "🌐" } }
@@ -364,7 +373,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
                 Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // Cover mode keeps the active/next lyrics below the metadata.
                 Spacer(Modifier.height(sectionGap))
-                track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, compact = compactLandscape, onClick = { lyricsMode = true }) }
+                if (ui.settings.coverLyricsPreview) track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, compact = compactLandscape, onClick = { lyricsMode = true }) }
             }
         } else {
             track?.let { NowPlayingLyricsPanel(it.id, state.positionMs, vm, expanded = true, modifier = Modifier.weight(1f).fillMaxWidth()) }
@@ -379,7 +388,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             IconButton(vm.player::previous) { Icon(Icons.Default.SkipPrevious, null, Modifier.size(36.dp)) }
             FilledIconButton(vm.player::toggle, Modifier.size(70.dp)) { Icon(if(state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, Modifier.size(36.dp)) }
             IconButton(vm.player::next) { Icon(Icons.Default.SkipNext, null, Modifier.size(36.dp)) }
-            IconButton({ vm.player.cycleRepeat(); repeatOptions = true }) { Icon(if(state.repeatMode == 1) Icons.Default.Repeat else if(state.repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, "반복", tint = if(state.repeatMode != 0) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
+            IconButton({ repeatOptions = !repeatOptions }) { Icon(if(state.repeatMode == 1) Icons.Default.Repeat else if(state.repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat, "반복 설정", tint = if(state.repeatMode != 0) MaterialTheme.colorScheme.primary else LocalContentColor.current) }
         }
         val loop = state.loopRange
         if (repeatOptions) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = if (loop != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
@@ -485,7 +494,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         item { Section("라이브러리"); Choice("전체 음악 검색", ui.settings.scanMode == ScanMode.MEDIA_STORE) { vm.setScanMode(ScanMode.MEDIA_STORE) }; Choice("선택 폴더만 검색", ui.settings.scanMode == ScanMode.SELECTED_FOLDERS) { vm.setScanMode(ScanMode.SELECTED_FOLDERS) }; SettingLine(Icons.Default.FolderOpen, "음악 폴더 추가", "${ui.settings.treeUris.size}개 폴더 등록", chooseTree); SettingLine(Icons.Default.Refresh, "음악 라이브러리 다시 검색", ui.scanMessage.orEmpty(), vm::scan) }
         item { Section("플로팅 가사"); SwitchLine("다른 앱 위에 가사 표시", ui.settings.floatingLyrics) { if(it && !Settings.canDrawOverlays(context)) requestOverlay(); floatingChanged(it) }; Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) { Text("표시 줄 수", Modifier.weight(1f)); (1..3).forEach { FilterChip(it == ui.settings.floatingLines, { vm.setFloatingLines(it) }, { Text("${it}줄") }, Modifier.padding(start = 6.dp)) } } }
         item { Section("테마"); Row(Modifier.padding(horizontal = 16.dp)) { ThemeMode.entries.forEach { mode -> FilterChip(mode == ui.settings.theme, { vm.setTheme(mode) }, { Text(when(mode){ThemeMode.DARK->"다크";ThemeMode.LIGHT->"라이트";ThemeMode.SYSTEM->"시스템"}) }, Modifier.padding(4.dp)) } } }
-        item { Section("재생 기록"); SwitchLine("많이 들은 곡 기록", ui.settings.trackListening, vm::setTrackListening) }
+        item { Section("재생"); SwitchLine("앨범커버 모드 가사 미리보기", ui.settings.coverLyricsPreview, vm::setCoverLyricsPreview); SwitchLine("많이 들은 곡 기록", ui.settings.trackListening, vm::setTrackListening) }
         item { Section("화면"); SwitchLine("앱을 보는 동안 화면 켜기", ui.settings.keepScreenOn, vm::setKeepScreenOn) }
         item { Section("권한"); SettingLine(Icons.Default.AudioFile, "음악 및 알림 권한", if(hasAudioPermission(context)) "허용됨" else "권한 필요", requestMedia); SettingLine(Icons.Default.PictureInPicture, "다른 앱 위에 표시", if(Settings.canDrawOverlays(context)) "허용됨" else "권한 필요", requestOverlay) }
         item { Section("내 앨범 데이터"); SettingLine(Icons.Default.Sync, "삼성뮤직 공개 재생목록 동기화", "Android에서 공개한 재생목록을 내 앨범으로 가져옵니다", vm::importPublicPlaylists); SettingLine(Icons.Default.FileUpload, "내 앨범 가져오기", "M3U / M3U8 / PLS 파일 선택", choosePlaylist); SettingLine(Icons.Default.FileDownload, "내 앨범 내보내기", "선택한 내 앨범을 M3U로 저장") { exportSheet = true } }

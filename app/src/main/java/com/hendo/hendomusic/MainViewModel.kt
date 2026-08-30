@@ -127,7 +127,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setFloatingLines(value: Int) = viewModelScope.launch { container.preferences.setFloatingLines(value) }
     fun setKeepScreenOn(value: Boolean) = viewModelScope.launch { container.preferences.setKeepScreenOn(value) }
     fun setTrackListening(value: Boolean) = viewModelScope.launch { container.preferences.setTrackListening(value) }
+    fun setCoverLyricsPreview(value: Boolean) = viewModelScope.launch { container.preferences.setCoverLyricsPreview(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
+    fun deleteSelectedTracks(ids: List<String>) = viewModelScope.launch { ids.forEach(player::removeTrack); dao.deleteTracksCompletely(ids) }
     fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?, done: (String) -> Unit) = viewModelScope.launch {
         done(runCatching { container.musicRepository.updateMetadata(track, title, artist, album, albumArtist); "저장했습니다" }.getOrElse { "저장 실패: ${it.localizedMessage}" })
     }

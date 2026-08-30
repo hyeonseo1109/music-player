@@ -81,6 +81,7 @@ class PlayerConnection(private val context: Context) {
     fun next() { clearLoop(); controller?.seekToNextMediaItem() }
     fun previous() { clearLoop(); controller?.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
+    fun playAt(index: Int) { clearLoop(); controller?.let { it.seekTo(index, 0); it.prepare(); it.play() } }
     fun toggleShuffle() {
         // The service moves existing MediaItems in-place. Replacing the playlist here causes
         // ExoPlayer to re-buffer the current source and produces an audible playback hiccup.
