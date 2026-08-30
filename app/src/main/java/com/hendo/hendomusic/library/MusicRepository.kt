@@ -119,6 +119,14 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                 }
                 val updated = context.contentResolver.update(Uri.parse(track.uri), values, null, null)
                 check(updated > 0) { "MediaStore가 메타데이터 변경을 반영하지 않았습니다." }
+                // Some providers acknowledge the update but keep the embedded tag unchanged.
+                // Never claim success unless the system's shared media index actually reflects it.
+                val verified = context.contentResolver.query(Uri.parse(track.uri), arrayOf(
+                    MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.ALBUM,
+                ), null, null, null)?.use { cursor ->
+                    cursor.moveToFirst() && cursor.getString(0) == title && cursor.getString(1) == artist && cursor.getString(2) == album
+                } == true
+                check(verified) { "이 기기는 음원 파일 태그 변경을 지원하지 않아 다른 앱에 반영할 수 없습니다." }
             } else throw UnsupportedOperationException("선택한 문서 공급자는 표준 태그 쓰기를 지원하지 않습니다.")
             dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
         }
