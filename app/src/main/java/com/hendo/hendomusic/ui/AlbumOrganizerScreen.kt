@@ -187,8 +187,11 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                     val from = rootAlbums.indexOfFirst { it.id == album.id }
                                     val rowPx = with(density) { 82.dp.toPx() }
                                     val targetRoot = (from + (dragY / rowPx).roundToInt()).coerceIn(rootAlbums.indices)
-                                    val folderTarget = ui.folders.getOrNull((kotlin.math.abs(dragY) / rowPx).roundToInt().coerceAtLeast(0))
-                                        ?.takeIf { kotlin.math.abs(dragY) > with(density) { 24.dp.toPx() } }
+                                    // A root reorder must never silently become a folder move.
+                                    // Only an intentional drag into the header/folder zone can
+                                    // enter a folder; ordinary vertical movement stays at root.
+                                    val folderTarget = ui.folders.getOrNull((kotlin.math.abs(dragY) / rowPx).roundToInt().coerceAtMost((ui.folders.size - 1).coerceAtLeast(0)))
+                                        ?.takeIf { dragY < -with(density) { 160.dp.toPx() } }
                                     if (folderTarget != null) {
                                         viewModel.moveAlbumToFolder(album.id, folderTarget.id)
                                     } else if (from >= 0 && targetRoot != from) {
