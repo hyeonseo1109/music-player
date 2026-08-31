@@ -45,6 +45,7 @@ fun MetadataEditorScreen(
     ui: MainUiState,
     viewModel: MainViewModel,
     requestWrite: (TrackEntity, MetadataUpdate, (String) -> Unit) -> Unit,
+    requestArtworkWrite: (TrackEntity, () -> Unit, (String) -> Unit) -> Unit,
     back: () -> Unit,
 ) {
     val track = ui.tracks.firstOrNull { it.id == trackId }
@@ -103,7 +104,11 @@ fun MetadataEditorScreen(
     cropSource?.let { source -> CropArtworkDialog(source, track.id, viewModel, { cropSource = null }, {
         cropSource = null
         if (artworkSelectionMode == "search") artworkSearch = true else photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-    }) { uri -> cropSource = null; message = "새 커버를 적용했습니다: ${uri.lastPathSegment}" } }
+    }, apply = { zoom, offsetX, offsetY, completed ->
+        requestArtworkWrite(track, {
+            viewModel.applyCroppedArtwork(track.id, source, zoom, offsetX, offsetY, completed)
+        }) { reason -> completed(Result.failure(IllegalStateException(reason))) }
+    }) { uri -> cropSource = null; message = "새 커버를 파일과 앱에 적용했습니다: ${uri.lastPathSegment}" } }
     if (confirmBack) AlertDialog(
         onDismissRequest = { confirmBack = false }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") },
         confirmButton = { TextButton({ confirmBack = false; back() }) { Text("나가기") } }, dismissButton = { TextButton({ confirmBack = false }) { Text("계속 편집") } },
@@ -138,7 +143,7 @@ fun MetadataEditorScreen(
     ) }
 }
 
-@Composable private fun CropArtworkDialog(source: Uri, trackId: String, viewModel: MainViewModel, close: () -> Unit, reselect: () -> Unit, applied: (Uri) -> Unit) {
+@Composable private fun CropArtworkDialog(source: Uri, trackId: String, viewModel: MainViewModel, close: () -> Unit, reselect: () -> Unit, apply: (Float, Float, Float, (Result<Uri>) -> Unit) -> Unit, applied: (Uri) -> Unit) {
     var zoom by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -160,7 +165,7 @@ fun MetadataEditorScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(close, enabled = !applying) { Text("취소") }
                     OutlinedButton(reselect, enabled = !applying) { Text("다시 선택") }
-                    Button({ applying = true; viewModel.applyCroppedArtwork(trackId, source, zoom, offsetX, offsetY) { result -> applying = false; result.onSuccess(applied).onFailure { error = it.localizedMessage } } }, enabled = !applying, modifier = Modifier.padding(start = 8.dp)) { if (applying) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("적용") }
+                    Button({ applying = true; apply(zoom, offsetX, offsetY) { result -> applying = false; result.onSuccess(applied).onFailure { error = it.localizedMessage ?: "커버 적용에 실패했습니다" } } }, enabled = !applying, modifier = Modifier.padding(start = 8.dp)) { if (applying) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("적용") }
                 }
             }
         }

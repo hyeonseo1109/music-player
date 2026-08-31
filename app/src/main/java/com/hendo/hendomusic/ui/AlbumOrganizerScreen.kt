@@ -130,21 +130,14 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                 ) { menuTarget = AlbumMenuTarget(folder.id, folder.name, true) }
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
-                AlbumTile(album, viewModel, Modifier.pointerInput(album.id, rootAlbums.size) {
+                val dragging = draggedId == album.id
+                AlbumTile(album, viewModel, Modifier
+                    .zIndex(if (dragging) 2f else 0f)
+                    .graphicsLayer { translationX = if (dragging) dragX else 0f; translationY = if (dragging) dragY else 0f; scaleX = if (dragging) 1.04f else 1f; scaleY = if (dragging) 1.04f else 1f }
+                    .pointerInput(album.id, rootAlbums.size) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = { draggedId = album.id; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
-                        onDrag = { change, amount ->
-                            change.consume(); dragX += amount.x; dragY += amount.y; dragTotalX += amount.x; dragTotalY += amount.y
-                            // Reorder while the finger moves, not only after it is released.
-                            val from = rootAlbums.indexOfFirst { it.id == album.id }
-                            val step = when {
-                                kotlin.math.abs(dragX) >= with(density) { 88.dp.toPx() } -> if (dragX > 0) 1 else -1
-                                kotlin.math.abs(dragY) >= with(density) { 104.dp.toPx() } -> if (dragY > 0) 2 else -2
-                                else -> 0
-                            }
-                            val to = (from + step).coerceIn(rootAlbums.indices)
-                            if (from >= 0 && step != 0 && from != to) { rootAlbums.add(to, rootAlbums.removeAt(from)); dragX = 0f; dragY = 0f }
-                        },
+                        onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y; dragTotalX += amount.x; dragTotalY += amount.y },
                         onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f },
                         onDragEnd = {
                             val from = rootAlbums.indexOfFirst { it.id == album.id }
@@ -152,8 +145,11 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                             val rowShift = (dragTotalY / with(density) { 160.dp.toPx() }).roundToInt()
                             val target = (from + columnShift + rowShift * 2).coerceIn(rootAlbums.indices)
                             val targetAlbum = rootAlbums.getOrNull(target)
+                            // Folder tiles are above the root album grid. Only an intentional
+                            // upward drop can target them; ordinary reorder drags must never be
+                            // captured just because any folder happens to exist.
                             val folderTarget = orderedFolders.getOrNull(kotlin.math.abs(rowShift).coerceAtMost(orderedFolders.lastIndex))
-                                ?.takeIf { kotlin.math.abs(dragTotalY) > with(density) { 24.dp.toPx() } }
+                                ?.takeIf { dragTotalY < -with(density) { 160.dp.toPx() } }
                             if (folderTarget != null) {
                                 // Grid mode supports the same album → folder drop as list mode.
                                 viewModel.moveAlbumToFolder(album.id, folderTarget.id)
@@ -177,7 +173,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 val dragging = draggedId == album.id
-                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, animationSpec = tween(70), label = "albumDrag")
+                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, animationSpec = tween(30), label = "albumDrag")
                 AlbumCard(
                     album,
                     Modifier

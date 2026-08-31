@@ -355,8 +355,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         done(runCatching { artworkRepository.downloadForCrop(url) })
     }
     fun applyCroppedArtwork(trackId: String, source: Uri, zoom: Float, offsetX: Float, offsetY: Float, done: (Result<Uri>) -> Unit) = viewModelScope.launch {
-        val result = runCatching { artworkRepository.cropToAppStorage(source, trackId, zoom, offsetX, offsetY) }
-        result.getOrNull()?.let { dao.updateCustomArtwork(trackId, it.toString(), ArtworkSource.USER.name, System.currentTimeMillis()) }
+        val result = runCatching {
+            val cropped = artworkRepository.cropToAppStorage(source, trackId, zoom, offsetX, offsetY)
+            val track = dao.track(trackId) ?: error("곡을 찾을 수 없습니다.")
+            container.musicRepository.updateArtwork(track, cropped.toString())
+            dao.updateCustomArtwork(trackId, cropped.toString(), ArtworkSource.USER.name, System.currentTimeMillis())
+            cropped
+        }
         done(result)
     }
     fun completeApprovedDelete(trackId: String) = viewModelScope.launch { player.removeTrack(trackId); dao.deleteTrackCompletely(trackId) }

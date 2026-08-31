@@ -15,6 +15,7 @@ import com.mpatric.mp3agic.Mp3File
 import com.mpatric.mp3agic.ID3v24Tag
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
+import org.jaudiotagger.tag.images.ArtworkFactory
 import java.io.File
 import java.security.MessageDigest
 
@@ -149,6 +150,54 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
         }
     }
 
+    /** Embeds the selected cover into formats that other music apps read, then rescans it. */
+    suspend fun updateArtwork(track: TrackEntity, artworkUri: String) = withContext(Dispatchers.IO) {
+        val image = File.createTempFile("hendo-cover-", ".img", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(artworkUri))?.use { input -> image.outputStream().use { output -> input.copyTo(output) } }
+                ?: error("선택한 커버 이미지를 읽을 수 없습니다.")
+            when {
+                track.fileName.endsWith(".mp3", true) -> rewriteMp3Artwork(track, image)
+                track.fileName.endsWith(".m4a", true) || track.fileName.endsWith(".flac", true) -> rewriteContainerArtwork(track, image)
+                else -> throw UnsupportedOperationException("${track.fileName.substringAfterLast('.')} 파일은 내장 커버 쓰기를 지원하지 않습니다.")
+            }
+            verifyEmbeddedArtwork(track.uri)
+            context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
+        } finally { image.delete() }
+    }
+
+    private fun rewriteMp3Artwork(track: TrackEntity, image: File) {
+        val source = File.createTempFile("hendo-source-", ".mp3", context.cacheDir)
+        val rewritten = File.createTempFile("hendo-rewritten-", ".mp3", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(track.uri))?.use { input -> source.outputStream().use { output -> input.copyTo(output) } }
+                ?: error("원본 MP3를 읽을 수 없습니다.")
+            val mp3 = Mp3File(source.absolutePath)
+            val tag = (mp3.id3v2Tag as? ID3v24Tag) ?: ID3v24Tag()
+            tag.setAlbumImage(image.readBytes(), "image/jpeg")
+            mp3.id3v2Tag = tag
+            mp3.save(rewritten.absolutePath)
+            context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output -> rewritten.inputStream().use { input -> input.copyTo(output) } }
+                ?: error("이 저장소는 MP3 커버 쓰기를 지원하지 않습니다.")
+        } finally { source.delete(); rewritten.delete() }
+    }
+
+    private fun rewriteContainerArtwork(track: TrackEntity, image: File) {
+        val extension = if (track.fileName.endsWith(".flac", true)) ".flac" else ".m4a"
+        val source = File.createTempFile("hendo-source-", extension, context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(track.uri))?.use { input -> source.outputStream().use { output -> input.copyTo(output) } }
+                ?: error("원본 파일을 읽을 수 없습니다.")
+            val audio = AudioFileIO.read(source)
+            val tag = audio.tagOrCreateAndSetDefault
+            tag.deleteArtworkField()
+            tag.addField(ArtworkFactory.createArtworkFromFile(image))
+            AudioFileIO.write(audio)
+            context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output -> source.inputStream().use { input -> input.copyTo(output) } }
+                ?: error("이 저장소는 커버 쓰기를 지원하지 않습니다.")
+        } finally { source.delete() }
+    }
+
     /** Rewrites MP3 ID3v2 tags through a temporary file, never editing the input stream in-place. */
     private fun rewriteMp3Tags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
         val source = File.createTempFile("hendo-source-", ".mp3", context.cacheDir)
@@ -204,6 +253,17 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) == title) { "파일 제목 태그를 다시 읽지 못했습니다." }
             check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) == artist) { "파일 아티스트 태그를 다시 읽지 못했습니다." }
             check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) == album) { "파일 앨범 태그를 다시 읽지 못했습니다." }
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /** Prevent an app-only success state when the file did not retain a readable cover frame. */
+    private fun verifyEmbeddedArtwork(uri: String) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, Uri.parse(uri))
+            check(retriever.embeddedPicture?.isNotEmpty() == true) { "파일에 내장 앨범 커버를 다시 읽지 못했습니다." }
         } finally {
             retriever.release()
         }

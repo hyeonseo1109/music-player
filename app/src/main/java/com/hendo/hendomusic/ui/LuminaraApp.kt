@@ -12,6 +12,11 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -86,6 +92,7 @@ fun LuminaraApp(
     requestDelete: (TrackEntity) -> Unit,
     requestDeleteMany: (List<TrackEntity>) -> Unit,
     requestMetadataWrite: (TrackEntity, MetadataUpdate, (String) -> Unit) -> Unit,
+    requestArtworkWrite: (TrackEntity, () -> Unit, (String) -> Unit) -> Unit,
 ) {
     val ui by viewModel.uiState.collectAsStateWithLifecycle()
     val playback by viewModel.player.state.collectAsStateWithLifecycle()
@@ -122,7 +129,13 @@ fun LuminaraApp(
             }
         },
     ) { padding ->
-        NavHost(nav, startDestination = "library", modifier = Modifier.padding(padding)) {
+        NavHost(
+            nav, startDestination = "library", modifier = Modifier.padding(padding),
+            enterTransition = { fadeIn(animationSpec = tween(30)) },
+            exitTransition = { fadeOut(animationSpec = tween(30)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(30)) },
+            popExitTransition = { fadeOut(animationSpec = tween(30)) },
+        ) {
             composable("library") { LibraryScreen(ui, viewModel, nav, requestDelete, requestDeleteMany, selectionResetKey) { librarySelection = it } }
             composable("albums") { AlbumOrganizerScreen(ui, viewModel, { id -> nav.navigate("album/$id") }, { id -> nav.navigate("folder/$id") }) { kind -> nav.navigate("special/$kind") } }
             composable("album/{albumId}") { back ->
@@ -172,6 +185,11 @@ fun LuminaraApp(
                 var draggedAlbumId by remember(folderId) { mutableStateOf<Long?>(null) }
                 var dragX by remember(folderId) { mutableFloatStateOf(0f) }
                 var dragY by remember(folderId) { mutableFloatStateOf(0f) }
+                var folderDragTotalY by remember(folderId) { mutableFloatStateOf(0f) }
+                // Once a dragged album touches the back/header zone, move it out immediately.
+                // Keeping this separate from drop handling prevents a normal reorder from being
+                // mistaken for a folder exit merely because a folder exists in the root list.
+                var folderExitTriggered by remember(folderId) { mutableStateOf(false) }
                 var albumMenuTarget by remember(folderId) { mutableStateOf<AlbumMenuTarget?>(null) }
                 var renameAlbumTarget by remember(folderId) { mutableStateOf<AlbumMenuTarget?>(null) }
                 var deleteAlbumTarget by remember(folderId) { mutableStateOf<AlbumMenuTarget?>(null) }
@@ -192,7 +210,8 @@ fun LuminaraApp(
                     if (members.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 폴더에 담긴 앨범이 없습니다.") }
                     else if (gridMode) LazyVerticalGrid(columns = GridCells.Adaptive(132.dp), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         gridItems(localMembers, key = { it.id }) { album ->
-                            Surface(Modifier.fillMaxWidth().pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragX = 0f; dragY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y }, onDragCancel = { draggedAlbumId = null }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragX / with(density) { 132.dp.toPx() }).roundToInt() + (dragY / with(density) { 160.dp.toPx() }).roundToInt() * 2).coerceIn(localMembers.indices); if (from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null } ) }.clickable { nav.navigate("album/${album.id}") }, shape = RoundedCornerShape(18.dp), color = Color.Transparent) {
+                            val dragging = draggedAlbumId == album.id
+                            Surface(Modifier.fillMaxWidth().zIndex(if (dragging) 2f else 0f).graphicsLayer { translationX = if (dragging) dragX else 0f; translationY = if (dragging) dragY else 0f; scaleX = if (dragging) 1.04f else 1f; scaleY = if (dragging) 1.04f else 1f }.pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragX = 0f; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y; folderDragTotalY += amount.y; if (!folderExitTriggered && folderDragTotalY < -with(density) { 120.dp.toPx() }) { folderExitTriggered = true; viewModel.moveAlbumToRoot(album.id); nav.popBackStack() } }, onDragCancel = { draggedAlbumId = null; dragX = 0f; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragX / with(density) { 132.dp.toPx() }).roundToInt() + (dragY / with(density) { 160.dp.toPx() }).roundToInt() * 2).coerceIn(localMembers.indices); if (!folderExitTriggered && from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null; dragX = 0f; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false } ) }.clickable { nav.navigate("album/${album.id}") }, shape = RoundedCornerShape(18.dp), color = Color.Transparent) {
                                 Column(Modifier.padding(10.dp)) {
                                     AlbumArtworkThumbnail(album, viewModel, Modifier.fillMaxWidth().aspectRatio(1f))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -205,7 +224,7 @@ fun LuminaraApp(
                         }
                     } else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(localMembers, key = { it.id }) { album ->
-                            ListItem(headlineContent = { Text(album.name) }, supportingContent = { Text("앨범 열기 · 길게 눌러 순서 이동") }, leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp)) }, trailingContent = { Row { IconButton({ albumMenuTarget = AlbumMenuTarget(album.id, album.name, false) }) { Icon(Icons.Default.MoreVert, "앨범 더보기") }; Icon(Icons.Default.ChevronRight, null) } }, modifier = Modifier.fillMaxWidth().pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragY += amount.y }, onDragCancel = { draggedAlbumId = null }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragY / with(density) { 76.dp.toPx() }).roundToInt()).coerceIn(localMembers.indices); if (from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null } ) }.clickable { nav.navigate("album/${album.id}") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                            ListItem(headlineContent = { Text(album.name) }, supportingContent = { Text("앨범 열기 · 길게 눌러 순서 이동") }, leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp)) }, trailingContent = { Row { IconButton({ albumMenuTarget = AlbumMenuTarget(album.id, album.name, false) }) { Icon(Icons.Default.MoreVert, "앨범 더보기") }; Icon(Icons.Default.ChevronRight, null) } }, modifier = Modifier.fillMaxWidth().pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragY += amount.y; folderDragTotalY += amount.y; if (!folderExitTriggered && folderDragTotalY < -with(density) { 120.dp.toPx() }) { folderExitTriggered = true; viewModel.moveAlbumToRoot(album.id); nav.popBackStack() } }, onDragCancel = { draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragY / with(density) { 76.dp.toPx() }).roundToInt()).coerceIn(localMembers.indices); if (!folderExitTriggered && from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false } ) }.clickable { nav.navigate("album/${album.id}") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                         }
                     }
@@ -249,7 +268,7 @@ fun LuminaraApp(
                 }
             }
             composable("metadata/{trackId}") { back ->
-                MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite) { nav.popBackStack() }
+                MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite, requestArtworkWrite) { nav.popBackStack() }
             }
         }
     } }
@@ -387,18 +406,36 @@ fun LuminaraApp(
     var visible by remember { mutableStateOf(false) }
     var interactionVersion by remember { mutableIntStateOf(0) }
     var dragIndex by remember { mutableIntStateOf(0) }
+    var railDragging by remember { mutableStateOf(false) }
+    var railEdgeDirection by remember { mutableIntStateOf(0) }
     val railState = rememberLazyListState()
     LaunchedEffect(interactionVersion) { val version = interactionVersion; if (visible) { kotlinx.coroutines.delay(3_000); if (interactionVersion == version) { selected = null; visible = false } } }
     fun jump(letter: String) { selected = letter; val target = if (letter == "1") "#" else letter; val i = tracks.indexOfFirst { indexLabel(it.title) == target }; if (i >= 0) scope.launch { state.scrollToItem(i) } }
     fun select(index: Int) { dragIndex = index.coerceIn(0, letters.lastIndex); visible = true; interactionVersion++; jump(letters[dragIndex]); scope.launch { railState.scrollToItem((dragIndex - 4).coerceAtLeast(0)) } }
+    LaunchedEffect(railDragging, railEdgeDirection) {
+        while (railDragging && railEdgeDirection != 0) {
+            railState.scrollToItem((railState.firstVisibleItemIndex + railEdgeDirection).coerceIn(0, letters.lastIndex))
+            kotlinx.coroutines.delay(45)
+        }
+    }
     Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(52.dp).padding(end = 5.dp).pointerInput(letters) {
         // This transparent hit layer receives the very first drag; the visible rail used to be
         // composed only after the first press, which made the first drag get lost.
-        detectDragGestures(
-            onDragStart = { offset -> select(railState.firstVisibleItemIndex + (offset.y / 20.dp.toPx()).toInt()) },
-            onDrag = { change, amount -> change.consume(); select(dragIndex + (amount.y / 20.dp.toPx()).roundToInt()) },
-            onDragEnd = {}, onDragCancel = {},
-        )
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            down.consume()
+            railDragging = true
+            railEdgeDirection = when { down.position.y < 42.dp.toPx() -> -1; down.position.y > size.height - 42.dp.toPx() -> 1; else -> 0 }
+            select(railState.firstVisibleItemIndex + (down.position.y / 20.dp.toPx()).toInt())
+            while (true) {
+                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                val delta = change.positionChange()
+                railEdgeDirection = when { change.position.y < 42.dp.toPx() -> -1; change.position.y > size.height - 42.dp.toPx() -> 1; else -> 0 }
+                if (delta.y != 0f) { change.consume(); select(dragIndex + (delta.y / 20.dp.toPx()).roundToInt()) }
+            }
+            railDragging = false; railEdgeDirection = 0
+        }
     }
     ) {
         selected?.let { Text(it, Modifier.align(Alignment.CenterStart).offset(x = (-58).dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(16.dp)).padding(12.dp), style = MaterialTheme.typography.headlineSmall) }
@@ -523,7 +560,8 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     var pendingLoopStart by remember(item?.mediaId) { mutableStateOf<Long?>(null) }
     val configuration = LocalConfiguration.current
     val compactLandscape = configuration.screenWidthDp > configuration.screenHeightDp
-    val sectionGap = if (compactLandscape) 10.dp else 20.dp
+    val previewOff = !ui.settings.coverLyricsPreview
+    val sectionGap = if (compactLandscape) 10.dp else if (previewOff) 22.dp else 28.dp
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = if (compactLandscape) 12.dp else 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth().padding(bottom = if (lyricsMode) sectionGap else 0.dp), verticalAlignment = Alignment.CenterVertically) { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.KeyboardArrowDown, null) }; if (lyricsMode) { Row(Modifier.weight(1f).clickable { lyricsMode = false }, verticalAlignment = Alignment.CenterVertically) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), 56); Column(Modifier.padding(start = 12.dp)) { Text(item?.mediaMetadata?.title?.toString().orEmpty(), Modifier.basicMarquee(), maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Bold); Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } } } else Text("지금 재생 중", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Box { IconButton({ moreOpen = true }) { Icon(Icons.Default.MoreVert, "더보기") }; DropdownMenu(moreOpen, { moreOpen = false }) { val id = item?.mediaMetadata?.extras?.getString("track_id"); DropdownMenuItem({ Text("곡 정보·앨범 커버 변경") }, { moreOpen = false; id?.let { nav.navigate("metadata/$it") } }); DropdownMenuItem({ Text("가사 검색") }, { moreOpen = false; id?.let { nav.navigate("lyricsSearch/$it") } }); DropdownMenuItem({ Text("가사 직접 입력/수정") }, { moreOpen = false; id?.let { nav.navigate("lyrics/$it") } }); DropdownMenuItem({ Text("가사 싱크 편집") }, { moreOpen = false; id?.let { nav.navigate("sync/$it") } }) } } }
         val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
@@ -531,9 +569,10 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             Column(
                 Modifier.weight(1f).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = if (previewOff) Arrangement.Center else Arrangement.Top,
             ) {
-                Spacer(Modifier.height(sectionGap))
-                val coverSize = if (compactLandscape) 120 else if (ui.settings.coverLyricsPreview) 200 else 232
+                Spacer(Modifier.height(if (ui.settings.coverLyricsPreview) 4.dp else 0.dp))
+                val coverSize = if (compactLandscape) 120 else if (ui.settings.coverLyricsPreview) 200 else 270
                 Box(Modifier.clickable { lyricsMode = true }) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), coverSize) }
                 Spacer(Modifier.height(sectionGap))
                 // Cover mode is intentionally cover → short lyrics → metadata. This keeps the

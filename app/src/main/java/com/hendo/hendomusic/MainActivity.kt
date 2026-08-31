@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private data class PendingMetadata(val track: TrackEntity, val update: MetadataUpdate, val done: (String) -> Unit)
+    private data class PendingArtwork(val track: TrackEntity, val apply: () -> Unit, val fail: (String) -> Unit)
     private data class PendingDelete(val tracks: List<TrackEntity>)
     private val viewModel: MainViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
             }
             var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
             var pendingMetadata by remember { mutableStateOf<PendingMetadata?>(null) }
+            var pendingArtwork by remember { mutableStateOf<PendingArtwork?>(null) }
             val deleteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                 val tracks = pendingDelete?.tracks.orEmpty()
                 if (result.resultCode == Activity.RESULT_OK && tracks.isNotEmpty()) {
@@ -64,6 +66,13 @@ class MainActivity : ComponentActivity() {
                     ) else pending.done("사용자가 파일 변경 승인을 취소했습니다")
                 }
                 pendingMetadata = null
+            }
+            val artworkWriteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                pendingArtwork?.let { pending ->
+                    if (result.resultCode == Activity.RESULT_OK) pending.apply()
+                    else pending.fail("사용자가 파일 커버 변경 승인을 취소했습니다")
+                }
+                pendingArtwork = null
             }
             val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
                 uri?.let {
@@ -153,6 +162,17 @@ class MainActivity : ComponentActivity() {
                             writeApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
                         } else {
                             viewModel.updateMetadata(track, update.title, update.artist, update.album, update.albumArtist, done)
+                        }
+                    },
+                    requestArtworkWrite = { track, apply, fail ->
+                        if (track.mediaStoreId == null) {
+                            fail("이 SAF 문서 공급자는 원본 앨범 커버 쓰기를 지원하지 않습니다")
+                        } else if (Build.VERSION.SDK_INT >= 30) {
+                            pendingArtwork = PendingArtwork(track, apply, fail)
+                            val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
+                            artworkWriteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                        } else {
+                            apply()
                         }
                     },
                 )

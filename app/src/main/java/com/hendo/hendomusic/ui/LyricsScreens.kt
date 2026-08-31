@@ -202,10 +202,10 @@ fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainVi
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton(::leave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") }; Text("가사 싱크 편집", style = MaterialTheme.typography.titleLarge) }
         Text("${formatLyricsTime(playback.positionMs)} / ${formatLyricsTime(playback.durationMs)}", color = MaterialTheme.colorScheme.primary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            lines.getOrNull(index - 1)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index-- }) }
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(vertical = 14.dp)) { Text(lines.getOrNull(index).orEmpty(), Modifier.padding(22.dp), style = MaterialTheme.typography.titleLarge) }
+            lines.subList((index - groupSize).coerceAtLeast(0), index).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (index - groupSize).coerceAtLeast(0) }) }
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(vertical = 14.dp)) { Text(lines.subList(index.coerceAtMost(lines.size), (index + groupSize).coerceAtMost(lines.size)).joinToString("\n"), Modifier.padding(22.dp), style = MaterialTheme.typography.titleLarge) }
             stamps[index]?.let { Text("지정 ${formatLyricsTime(it)}", color = MaterialTheme.colorScheme.primary) }
-            lines.getOrNull(index + 1)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index++ }) }
+            lines.subList((index + groupSize).coerceAtMost(lines.size), (index + groupSize * 2).coerceAtMost(lines.size)).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (index + groupSize).coerceAtMost(lines.lastIndex) }) }
         }
         // 싱크는 현재 재생 위치에만 기록한다. ±초 미세 조절은 제공하지 않는다.
         FilledIconButton(viewModel.player::toggle) {

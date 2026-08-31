@@ -64,8 +64,8 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             itemsIndexed(localQueue, key = { _, item -> item.mediaId }) { index, item ->
                 val dragging = draggedId == item.mediaId
-                val scale by animateFloatAsState(if (dragging) 1.025f else 1f, animationSpec = tween(70), label = "queueScale")
-                val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, animationSpec = tween(70), label = "queueElevation")
+                val scale by animateFloatAsState(if (dragging) 1.025f else 1f, animationSpec = tween(30), label = "queueScale")
+                val elevation by animateDpAsState(if (dragging) 10.dp else 0.dp, animationSpec = tween(30), label = "queueElevation")
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = Color.Transparent,

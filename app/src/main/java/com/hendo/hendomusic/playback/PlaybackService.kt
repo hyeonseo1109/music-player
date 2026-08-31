@@ -1,6 +1,7 @@
 package com.hendo.hendomusic.playback
 
 import android.content.Intent
+import android.app.PendingIntent
 import android.os.Handler
 import android.os.Looper
 import androidx.core.net.toUri
@@ -103,7 +104,7 @@ class PlaybackService : MediaSessionService() {
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(APPEND_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).build())
+                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(APPEND_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).add(SessionCommand(COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)).build())
                 .build()
         }
 
@@ -126,6 +127,12 @@ class PlaybackService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_PLAY_NEXT, COMMAND_APPEND -> Unit
+                COMMAND_TOGGLE_FAVORITE -> {
+                    player.currentMediaItem?.mediaMetadata?.extras?.getString(KEY_TRACK_ID)?.let { id ->
+                        scope.launch { dao.toggleFavorite(id, System.currentTimeMillis()) }
+                    }
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
                 COMMAND_STOP_PLAYBACK -> { player.pause(); player.clearMediaItems(); stopSelf(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
             }
@@ -321,6 +328,7 @@ class PlaybackService : MediaSessionService() {
         const val COMMAND_SET_LOOP = "com.hendo.hendomusic.SET_LOOP"
         const val COMMAND_CLEAR_LOOP = "com.hendo.hendomusic.CLEAR_LOOP"
         const val COMMAND_STOP_PLAYBACK = "com.hendo.hendomusic.STOP_PLAYBACK"
+        const val COMMAND_TOGGLE_FAVORITE = "com.hendo.hendomusic.TOGGLE_FAVORITE"
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
         val PLAY_NEXT_COMMAND = SessionCommand(COMMAND_PLAY_NEXT, android.os.Bundle.EMPTY)
@@ -335,6 +343,13 @@ class PlaybackService : MediaSessionService() {
 private class HendoNotificationProvider(private val appContext: android.content.Context) : DefaultMediaNotificationProvider(appContext) {
     override fun addNotificationActions(session: MediaSession, mediaButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>, builder: NotificationCompat.Builder, actionFactory: MediaNotification.ActionFactory): IntArray {
         val compact = super.addNotificationActions(session, mediaButtons, builder, actionFactory)
+        val launch = Intent(appContext, com.hendo.hendomusic.MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+        builder.setContentIntent(PendingIntent.getActivity(appContext, 2001, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .setAutoCancel(false)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setColor(0xFF8B5CF6.toInt())
+        builder.addAction(actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY))
         builder.addAction(actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel), "재생 종료", PlaybackService.COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY))
         return compact
     }
