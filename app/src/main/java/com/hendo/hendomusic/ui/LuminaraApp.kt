@@ -369,7 +369,7 @@ fun LuminaraApp(
             Text("내 음악", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             IconButton(onClick = { vm.scan() }) { Icon(Icons.Default.Refresh, "다시 검색") }
         }
-        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).onFocusChanged { if (it.isFocused) selectedIds = emptySet() }, shape = RoundedCornerShape(18.dp))
+        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).hendoClipboardToolbar({ searchField.text }) { pasted -> searchField = searchField.copy(text = searchField.text + pasted); vm.setQuery(searchField.text) }.onFocusChanged { if (it.isFocused) selectedIds = emptySet() }, shape = RoundedCornerShape(18.dp))
         if (selectedTracks.isEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("${ui.visibleTracks.size}곡", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box { TextButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, null); Text(sortLabel(ui.settings.sort)) }

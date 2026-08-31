@@ -82,10 +82,10 @@ fun MetadataEditorScreen(
                 if (art != null) AsyncImage(art, "앨범 커버", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Icons.Default.AddPhotoAlternate, "앨범 커버 선택", Modifier.size(58.dp), tint = MaterialTheme.colorScheme.primary)
             }
             Text("커버를 눌러 갤러리 선택·검색·제거", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("곡 제목") }, singleLine = true)
-            OutlinedTextField(artist, { artist = it }, Modifier.fillMaxWidth(), label = { Text("아티스트") }, singleLine = true)
-            OutlinedTextField(album, { album = it }, Modifier.fillMaxWidth(), label = { Text("앨범") }, singleLine = true)
-            OutlinedTextField(albumArtist, { albumArtist = it }, Modifier.fillMaxWidth(), label = { Text("앨범 아티스트") }, singleLine = true)
+            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth().hendoClipboardToolbar({ title }) { title += it }, label = { Text("곡 제목") }, singleLine = true)
+            OutlinedTextField(artist, { artist = it }, Modifier.fillMaxWidth().hendoClipboardToolbar({ artist }) { artist += it }, label = { Text("아티스트") }, singleLine = true)
+            OutlinedTextField(album, { album = it }, Modifier.fillMaxWidth().hendoClipboardToolbar({ album }) { album += it }, label = { Text("앨범") }, singleLine = true)
+            OutlinedTextField(albumArtist, { albumArtist = it }, Modifier.fillMaxWidth().hendoClipboardToolbar({ albumArtist }) { albumArtist += it }, label = { Text("앨범 아티스트") }, singleLine = true)
             Text(if (track.fileName.endsWith(".mp3", true) || track.fileName.endsWith(".m4a", true) || track.fileName.endsWith(".flac", true)) "MP3/M4A/FLAC는 파일 안의 태그를 직접 수정한 뒤 다른 음악 앱에도 반영합니다. Android 쓰기 승인이 필요합니다." else "현재 파일 자체 태그 수정은 MP3/M4A/FLAC만 지원합니다. 지원하지 않는 형식은 잘못된 부분 변경을 하지 않으며 저장하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             message?.let { Text(it, color = if (it.startsWith("저장 실패")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
         }
@@ -123,7 +123,7 @@ fun MetadataEditorScreen(
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.Close, "닫기") }; Text("앨범 커버 검색", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-                Row(verticalAlignment = Alignment.CenterVertically) { OutlinedTextField(query, { query = it }, Modifier.weight(1f), singleLine = true, label = { Text("검색어") }); IconButton({ viewModel.searchArtwork(query) }, enabled = query.isNotBlank()) { Icon(Icons.Default.Search, "검색") } }
+                Row(verticalAlignment = Alignment.CenterVertically) { OutlinedTextField(query, { query = it }, Modifier.weight(1f).hendoClipboardToolbar({ query }) { query += it }, singleLine = true, label = { Text("검색어") }); IconButton({ viewModel.searchArtwork(query) }, enabled = query.isNotBlank()) { Icon(Icons.Default.Search, "검색") } }
                 Spacer(Modifier.height(10.dp))
                 when (val value = state) {
                     ArtworkSearchState.Idle -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Button({ viewModel.searchArtwork(query) }) { Text("자동 검색어로 검색") } }

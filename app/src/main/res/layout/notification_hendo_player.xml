@@ -8,7 +8,7 @@
         android:id="@+id/notification_artwork"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:alpha="0.38"
+        android:alpha="0.82"
         android:scaleType="centerCrop" />
 
     <LinearLayout
@@ -24,8 +24,8 @@
             android:ellipsize="marquee"
             android:singleLine="true"
             android:textColor="#FFFFFFFF"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:textSize="13sp"
+            android:textStyle="normal" />
 
         <TextView
             android:id="@+id/notification_artist"
@@ -34,15 +34,34 @@
             android:ellipsize="end"
             android:singleLine="true"
             android:textColor="#E6FFFFFF"
-            android:textSize="13sp" />
+            android:textSize="11sp" />
 
         <ProgressBar
             android:id="@+id/notification_progress"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="4dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="6dp"
             android:progressTint="#FFA855F7" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/notification_elapsed"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#E6FFFFFF"
+                android:textSize="10sp" />
+            <TextView
+                android:id="@+id/notification_duration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#E6FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -53,8 +72,8 @@
 
             <ImageButton
                 android:id="@+id/notification_previous"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="이전 곡"
                 android:src="@android:drawable/ic_media_previous"
@@ -62,16 +81,16 @@
 
             <ImageButton
                 android:id="@+id/notification_play_pause"
-                android:layout_width="52dp"
-                android:layout_height="44dp"
+                android:layout_width="40dp"
+                android:layout_height="36dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="재생 또는 일시정지"
                 android:tint="#FFFFFFFF" />
 
             <ImageButton
                 android:id="@+id/notification_next"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="다음 곡"
                 android:src="@android:drawable/ic_media_next"
@@ -84,12 +103,21 @@
 
             <ImageButton
                 android:id="@+id/notification_favorite"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="좋아요"
-                android:src="@android:drawable/btn_star_big_on"
+                android:src="@drawable/ic_notification_heart"
                 android:tint="#FFE9D5FF" />
+
+            <ImageButton
+                android:id="@+id/notification_close"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="재생 종료"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:tint="#FFFFFFFF" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

@@ -99,7 +99,17 @@ class FloatingLyricsService : Service() {
         view.addView(controls)
         collapseLater()
     }
-    private fun button(icon: Int, click: () -> Unit) = ImageButton(this).apply { setImageResource(icon); setColorFilter(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { click() } }
+    private fun button(icon: Int, click: () -> Unit) = ImageButton(this).apply {
+        // Keep overlay transport controls as bare glyphs: the system ImageButton
+        // background can otherwise draw a boxed/ripple border on some Samsung themes.
+        setImageResource(icon)
+        setColorFilter(Color.WHITE)
+        background = null
+        setPadding(0)
+        minimumWidth = 0
+        minimumHeight = 0
+        setOnClickListener { click() }
+    }
     private fun collapseLater() { root?.postDelayed({ if(expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }, 2_000) }
     private fun collapseControls() { if (expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }
     private fun refresh() {

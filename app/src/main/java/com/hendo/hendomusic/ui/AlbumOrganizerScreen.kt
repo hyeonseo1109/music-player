@@ -26,8 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Dp
@@ -61,6 +65,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragTotalX by remember { mutableFloatStateOf(0f) }
     var dragTotalY by remember { mutableFloatStateOf(0f) }
+    var dragPointer by remember { mutableStateOf<Offset?>(null) }
+    val folderBounds = remember { mutableStateMapOf<Long, Rect>() }
+    val albumBounds = remember { mutableStateMapOf<Long, Rect>() }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val playlistImport by viewModel.playlistImport.collectAsStateWithLifecycle()
@@ -112,7 +119,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                     folder,
                     ui.albums.filter { it.folderId == folder.id },
                     viewModel,
-                    Modifier.pointerInput(folder.id, orderedFolders.size) {
+                    Modifier.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) {
                         detectDragGesturesAfterLongPress(
                             onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
                             onDrag = { change, amount ->
@@ -134,11 +141,31 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                 AlbumTile(album, viewModel, Modifier
                     .zIndex(if (dragging) 2f else 0f)
                     .graphicsLayer { translationX = if (dragging) dragX else 0f; translationY = if (dragging) dragY else 0f; scaleX = if (dragging) 1.04f else 1f; scaleY = if (dragging) 1.04f else 1f }
+                    .onGloballyPositioned { albumBounds[album.id] = it.boundsInRoot() }
                     .pointerInput(album.id, rootAlbums.size) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { draggedId = album.id; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
-                        onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y; dragTotalX += amount.x; dragTotalY += amount.y },
-                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f },
+                        onDragStart = { point -> draggedId = album.id; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = (albumBounds[album.id]?.topLeft ?: Offset.Zero) + point; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onDrag = { change, amount ->
+                            change.consume(); dragX += amount.x; dragY += amount.y; dragTotalX += amount.x; dragTotalY += amount.y
+                            dragPointer = (dragPointer ?: change.position) + amount
+                            // When the finger is in an empty slot, reflow the neighbouring
+                            // cards immediately. A direct hit on an album remains a folder
+                            // creation drop, so reordering never steals that gesture.
+                            val hitAlbum = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                            val hitFolder = orderedFolders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                            if (hitAlbum == null && hitFolder == null) {
+                                val from = rootAlbums.indexOfFirst { it.id == album.id }
+                                val horizontal = (dragX / with(density) { 132.dp.toPx() }).toInt()
+                                val vertical = (dragY / with(density) { 160.dp.toPx() }).toInt() * 2
+                                val to = (from + horizontal + vertical).coerceIn(rootAlbums.indices)
+                                if (from >= 0 && to != from) {
+                                    rootAlbums.add(to, rootAlbums.removeAt(from))
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    dragX = 0f; dragY = 0f
+                                }
+                            }
+                        },
+                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null },
                         onDragEnd = {
                             val from = rootAlbums.indexOfFirst { it.id == album.id }
                             val columnShift = (dragTotalX / with(density) { 132.dp.toPx() }).roundToInt()
@@ -148,18 +175,18 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                             // Folder tiles are above the root album grid. Only an intentional
                             // upward drop can target them; ordinary reorder drags must never be
                             // captured just because any folder happens to exist.
-                            val folderTarget = orderedFolders.getOrNull(kotlin.math.abs(rowShift).coerceAtMost(orderedFolders.lastIndex))
-                                ?.takeIf { dragTotalY < -with(density) { 160.dp.toPx() } }
+                            val folderTarget = orderedFolders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                            val albumTarget = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
                             if (folderTarget != null) {
                                 // Grid mode supports the same album → folder drop as list mode.
                                 viewModel.moveAlbumToFolder(album.id, folderTarget.id)
-                            } else if (from >= 0 && targetAlbum != null && targetAlbum.id != album.id && (kotlin.math.abs(dragX) > with(density) { 34.dp.toPx() } || kotlin.math.abs(dragY) > with(density) { 34.dp.toPx() })) {
+                            } else if (albumTarget != null) {
                                 // Dropping an album onto another tile creates a named folder, matching list mode.
-                                pendingPair = album.id to targetAlbum.id
+                                pendingPair = album.id to albumTarget.id
                             } else if (from >= 0 && target != from) {
                                 rootAlbums.add(target, rootAlbums.removeAt(from)); viewModel.reorderAlbums(rootAlbums.map { it.id })
                             }
-                            draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f
+                            draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null
                         },
                     )
                 }, { openAlbum(album.id) }) { menuTarget = AlbumMenuTarget(album.id, album.name, false) }
@@ -168,7 +195,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             item { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") }; if (ui.settings.trackListening) SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder ->
                 val members = ui.albums.filter { it.folderId == folder.id }
-                FolderCard(folder, members, viewModel, Modifier.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = (from + if (amount.y > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) orderedFolders.add(to, orderedFolders.removeAt(from)) }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) }, onDragCancel = {}) }, { openFolder(folder.id) }) { menuTarget = AlbumMenuTarget(folder.id, folder.name, true) }
+                FolderCard(folder, members, viewModel, Modifier.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = (from + if (amount.y > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) orderedFolders.add(to, orderedFolders.removeAt(from)) }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) }, onDragCancel = {}) }, { openFolder(folder.id) }) { menuTarget = AlbumMenuTarget(folder.id, folder.name, true) }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
@@ -179,10 +206,10 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                     Modifier
                         .zIndex(if (dragging) 2f else 0f)
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationX = if (dragging) dragX else 0f; translationY = if (dragging) dragY else 0f },
-                    Modifier.pointerInput(album.id, rootAlbums.size, ui.folders.size) {
+                    Modifier.onGloballyPositioned { albumBounds[album.id] = it.boundsInRoot() }.pointerInput(album.id, rootAlbums.size, ui.folders.size) {
                             detectDragGesturesAfterLongPress(
-                                onDragStart = { draggedId = album.id; dragX = 0f; dragY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f },
+                                onDragStart = { point -> draggedId = album.id; dragX = 0f; dragY = 0f; dragPointer = (albumBounds[album.id]?.topLeft ?: Offset.Zero) + point; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                                onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null },
                                 onDragEnd = {
                                     val from = rootAlbums.indexOfFirst { it.id == album.id }
                                     val rowPx = with(density) { 82.dp.toPx() }
@@ -190,17 +217,33 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                     // A root reorder must never silently become a folder move.
                                     // Only an intentional drag into the header/folder zone can
                                     // enter a folder; ordinary vertical movement stays at root.
-                                    val folderTarget = ui.folders.getOrNull((kotlin.math.abs(dragY) / rowPx).roundToInt().coerceAtMost((ui.folders.size - 1).coerceAtLeast(0)))
-                                        ?.takeIf { dragY < -with(density) { 160.dp.toPx() } }
+                                    val folderTarget = ui.folders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                                    val albumTarget = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
                                     if (folderTarget != null) {
                                         viewModel.moveAlbumToFolder(album.id, folderTarget.id)
+                                    } else if (albumTarget != null) {
+                                        pendingPair = album.id to albumTarget.id
                                     } else if (from >= 0 && targetRoot != from) {
                                         rootAlbums.add(targetRoot, rootAlbums.removeAt(from))
                                         viewModel.reorderAlbums(rootAlbums.map { it.id })
                                     }
-                                    draggedId = null; dragX = 0f; dragY = 0f
+                                    draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null
                                 },
-                                onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y },
+                                onDrag = { change, amount ->
+                                    change.consume(); dragX += amount.x; dragY += amount.y
+                                    dragPointer = (dragPointer ?: change.position) + amount
+                                    val hitAlbum = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                                    val hitFolder = orderedFolders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
+                                    if (hitAlbum == null && hitFolder == null && kotlin.math.abs(dragY) >= with(density) { 76.dp.toPx() }) {
+                                        val from = rootAlbums.indexOfFirst { it.id == album.id }
+                                        val to = (from + if (dragY > 0) 1 else -1).coerceIn(rootAlbums.indices)
+                                        if (from >= 0 && to != from) {
+                                            rootAlbums.add(to, rootAlbums.removeAt(from))
+                                            dragY = 0f
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                    }
+                                },
                             )
                     },
                     viewModel,

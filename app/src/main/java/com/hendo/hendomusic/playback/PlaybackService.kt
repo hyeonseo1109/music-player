@@ -38,6 +38,7 @@ import com.hendo.hendomusic.domain.LoopRangePolicy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import java.util.UUID
+import java.util.Locale
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -366,15 +367,20 @@ private class HendoNotificationProvider(private val appContext: android.content.
         val playPause = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play), if (player.isPlaying) "일시정지" else "재생", Player.COMMAND_PLAY_PAUSE)
         val next = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_next), "다음 곡", Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
         val favorite = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)
+        val close = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel), "재생 종료", PlaybackService.COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)
+        val duration = player.duration.takeIf { it > 0 } ?: 0L
         val views = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player).apply {
             setTextViewText(com.hendo.hendomusic.R.id.notification_title, metadata.title ?: "HendoMusic")
             setTextViewText(com.hendo.hendomusic.R.id.notification_artist, metadata.artist ?: "알 수 없는 아티스트")
-            setProgressBar(com.hendo.hendomusic.R.id.notification_progress, player.duration.coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), player.currentPosition.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), false)
+            setProgressBar(com.hendo.hendomusic.R.id.notification_progress, duration.coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), player.currentPosition.coerceIn(0L, duration).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), false)
+            setTextViewText(com.hendo.hendomusic.R.id.notification_elapsed, formatNotificationTime(player.currentPosition))
+            setTextViewText(com.hendo.hendomusic.R.id.notification_duration, formatNotificationTime(duration))
             setImageViewResource(com.hendo.hendomusic.R.id.notification_play_pause, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_previous, previous.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_play_pause, playPause.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close.actionIntent)
             metadata.artworkUri?.let { uri ->
                 runCatching { appContext.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream) }
                     .getOrNull()?.let { setImageViewBitmap(com.hendo.hendomusic.R.id.notification_artwork, it) }
@@ -384,13 +390,14 @@ private class HendoNotificationProvider(private val appContext: android.content.
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(contentIntent)
             .setDeleteIntent(actionFactory.createNotificationDismissalIntent(session))
-            .setOngoing(player.isPlaying)
+            // Playback notification remains pinned until the explicit close action is used.
+            // This also prevents Android's generic clear-all from dropping an active session.
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setCustomContentView(views)
             .setCustomBigContentView(views)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .build()
         return MediaNotification(NOTIFICATION_ID, notification)
     }
@@ -400,6 +407,11 @@ private class HendoNotificationProvider(private val appContext: android.content.
     private companion object {
         const val CHANNEL_ID = "hendo_playback"
         const val NOTIFICATION_ID = 1001
+    }
+
+    private fun formatNotificationTime(positionMs: Long): String {
+        val seconds = (positionMs.coerceAtLeast(0L) / 1_000L)
+        return String.format(Locale.getDefault(), "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 
