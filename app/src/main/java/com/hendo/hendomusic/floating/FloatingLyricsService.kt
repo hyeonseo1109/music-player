@@ -134,7 +134,10 @@ class FloatingLyricsService : Service() {
             val following = syncedLyrics.drop(active + activeBlock.size).take((floatingLineCount - activeBlock.size).coerceAtLeast(0)).map { it.text }
             val lines = (activeBlock + following).take(floatingLineCount)
             SpannableString(lines.joinToString("\n")).apply {
-                lines.firstOrNull()?.length?.takeIf { it > 0 }?.let { setSpan(ForegroundColorSpan(Color.rgb(190, 166, 255)), 0, it, 0) }
+                // 동일 타임스탬프의 1~3줄은 하나의 현재 가사 블록이다.
+                activeBlock.joinToString("\n").length.takeIf { it > 0 }?.let {
+                    setSpan(ForegroundColorSpan(Color.rgb(190, 166, 255)), 0, it, 0)
+                }
             }
         } else plainLyrics.lineSequence().filter { it.isNotBlank() }.take(floatingLineCount).joinToString("\n").ifBlank { "가사를 불러올 수 없습니다." }
         root?.findViewById<TextView>(LYRIC_ID)?.text = text

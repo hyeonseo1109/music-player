@@ -119,11 +119,13 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
         withContext(Dispatchers.IO) {
             if (track.fileName.endsWith(".mp3", ignoreCase = true)) {
                 rewriteMp3Tags(track, title, artist, album, albumArtist)
+                verifyEmbeddedMetadata(track.uri, title, artist, album)
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
-            if (track.fileName.endsWith(".m4a", ignoreCase = true)) {
-                rewriteM4aTags(track, title, artist, album, albumArtist)
+            if (track.fileName.endsWith(".m4a", ignoreCase = true) || track.fileName.endsWith(".flac", ignoreCase = true)) {
+                rewriteContainerTags(track, title, artist, album, albumArtist)
+                verifyEmbeddedMetadata(track.uri, title, artist, album)
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
@@ -166,15 +168,17 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
     }
 
     /**
-     * Rewrites M4A/MP4 metadata on a temporary copy and writes it back only after
-     * Android has granted the caller write access to the selected media item.
+     * Rewrites M4A/MP4 and FLAC metadata on a temporary copy and writes it back
+     * only after Android has granted write access to the selected media item.
      */
-    private fun rewriteM4aTags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
-        val source = File.createTempFile("hendo-source-", ".m4a", context.cacheDir)
+    private fun rewriteContainerTags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
+        val extension = if (track.fileName.endsWith(".flac", ignoreCase = true)) ".flac" else ".m4a"
+        val format = if (extension == ".flac") "FLAC" else "M4A"
+        val source = File.createTempFile("hendo-source-", extension, context.cacheDir)
         try {
             context.contentResolver.openInputStream(Uri.parse(track.uri))?.use { input ->
                 source.outputStream().use { input.copyTo(it) }
-            } ?: error("원본 M4A를 읽을 수 없습니다.")
+            } ?: error("원본 $format 파일을 읽을 수 없습니다.")
             val audio = AudioFileIO.read(source)
             val tag = audio.tagOrCreateAndSetDefault
             tag.setField(FieldKey.TITLE, title)
@@ -185,10 +189,23 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             AudioFileIO.write(audio)
             context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output ->
                 source.inputStream().use { it.copyTo(output) }
-            } ?: error("이 저장소는 M4A 파일 쓰기를 지원하지 않습니다.")
+            } ?: error("이 저장소는 $format 파일 쓰기를 지원하지 않습니다.")
             context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
         } finally {
             source.delete()
+        }
+    }
+
+    /** Do not report success until Android can read the rewritten embedded metadata back. */
+    private fun verifyEmbeddedMetadata(uri: String, title: String, artist: String, album: String) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, Uri.parse(uri))
+            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) == title) { "파일 제목 태그를 다시 읽지 못했습니다." }
+            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) == artist) { "파일 아티스트 태그를 다시 읽지 못했습니다." }
+            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) == album) { "파일 앨범 태그를 다시 읽지 못했습니다." }
+        } finally {
+            retriever.release()
         }
     }
 

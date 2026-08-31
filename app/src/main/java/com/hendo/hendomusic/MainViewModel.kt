@@ -99,11 +99,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         MainUiState(tracks, sorted, settings, q, scan.first, scan.second, albums, folders)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MainUiState())
 
-    // Warm a practical batch on launch so metadata appears without the user opening a search UI.
-    // The work remains bounded: playback still has priority and a scan never requests the whole library at once.
+    // Start with a small batch, then continue in the ViewModel background until missing
+    // automatic metadata has been considered for the whole local library.
     init {
         viewModelScope.launch { container.preferences.settings.first(); mutableSettingsLoaded.value = true }
-        viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichMissing(limit = 12) }
+        viewModelScope.launch { delay(1_000); container.metadataEnricher.enrichAllMissing() }
     }
 
     fun setQuery(value: String) { query.value = value }
@@ -115,8 +115,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else container.musicRepository.scanTrees(settings.treeUris)
         }
         result.getOrNull()?.removedTrackIds?.forEach(player::removeTrack)
-        // Network enrichment is bounded and runs independently after local scan persistence.
-        if (result.isSuccess) viewModelScope.launch { container.metadataEnricher.enrichMissing() }
+        // Continue auto metadata discovery after the local library has been persisted.
+        if (result.isSuccess) viewModelScope.launch { container.metadataEnricher.enrichAllMissing() }
         scanState.value = false to result.fold(
             { "${it.found}곡 검색 · ${it.addedOrUpdated}곡 반영 · ${it.removed}곡 제거" },
             { "검색 실패: ${it.localizedMessage}" },
@@ -160,9 +160,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun renameFolder(id: Long, name: String) = viewModelScope.launch { dao.renameFolder(id, name) }
     fun renameAlbum(id: Long, name: String) = viewModelScope.launch { dao.renameAlbum(id, name) }
     /** null restores automatic first-track artwork; an empty URI deliberately hides it. */
-    fun setAlbumArtwork(id: Long, uri: String?) = viewModelScope.launch { dao.updateAlbumArtwork(id, uri) }
+    fun setAlbumArtwork(id: Long, uri: String?) = viewModelScope.launch {
+        val stored = uri?.takeIf { it.isNotEmpty() }?.let { artworkRepository.cropToAppStorage(Uri.parse(it), "album_$id", 1f, 0f, 0f).toString() } ?: uri
+        dao.updateAlbumArtwork(id, stored)
+    }
     /** null restores automatic collage artwork; an empty URI deliberately shows the placeholder. */
-    fun setFolderArtwork(id: Long, uri: String?) = viewModelScope.launch { dao.updateFolderArtwork(id, uri) }
+    fun setFolderArtwork(id: Long, uri: String?) = viewModelScope.launch {
+        val stored = uri?.takeIf { it.isNotEmpty() }?.let { artworkRepository.cropToAppStorage(Uri.parse(it), "folder_$id", 1f, 0f, 0f).toString() } ?: uri
+        dao.updateFolderArtwork(id, stored)
+    }
     fun deleteAlbum(id: Long) = viewModelScope.launch { dao.deleteAlbumCompletely(id) }
     fun dissolveFolder(id: Long) = viewModelScope.launch {
         dao.dissolveFolder(id, uiState.value.albums.count { it.folderId == null })
@@ -281,19 +287,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val communityResult = community.await()
                 val lrcLyrics = lrcResult.getOrDefault(emptyList())
                 val communityLyrics = communityResult.getOrDefault(emptyList())
-                // Manual search is user-confirmed, so show a small set of title-matched Genie
-                // candidates when LRCLIB is empty instead of discarding artist-format variants.
-                val genieLyrics = if (lrcLyrics.isEmpty()) {
-                    runCatching { genieLyricsProvider.searchManual(title, artist) }.getOrDefault(emptyList()).map { genie ->
-                        LyricsSearchResult(
-                            id = "genie:${genie.songId}", preview = genie.plainText.take(180), source = "Genie",
-                            synced = true, votes = 0, updatedAt = "", plainText = genie.plainText,
-                            syncedText = LrcCodec.encode(genie.syncedLines.mapIndexed { index, line ->
-                                SyncedLyricLine("genie_${genie.songId}_$index", line.startTimeMs, line.text)
-                            }), trackTitle = genie.title, trackArtist = genie.artist, album = genie.album,
-                        )
-                    }
-                } else emptyList()
+                // Manual search is user-confirmed. Always include permissively matched Genie
+                // candidates: LRCLIB can return a loosely related row even when it has no
+                // useful lyric for this song, so treating a non-empty response as a fallback
+                // blocker hides valid public Genie results.
+                val genieLyrics = runCatching { genieLyricsProvider.searchManual(title, artist) }.getOrDefault(emptyList()).map { genie ->
+                    LyricsSearchResult(
+                        id = "genie:${genie.songId}", preview = genie.plainText.take(180), source = "Genie",
+                        synced = true, votes = 0, updatedAt = "", plainText = genie.plainText,
+                        syncedText = LrcCodec.encode(genie.syncedLines.mapIndexed { index, line ->
+                            SyncedLyricLine("genie_${genie.songId}_$index", line.startTimeMs, line.text)
+                        }), trackTitle = genie.title, trackArtist = genie.artist, album = genie.album,
+                    )
+                }
                 // A disabled or empty optional community provider must not hide a
                 // real LRCLIB request failure as a misleading empty-result state.
                 if (lrcResult.isFailure && communityLyrics.isEmpty() && genieLyrics.isEmpty()) {

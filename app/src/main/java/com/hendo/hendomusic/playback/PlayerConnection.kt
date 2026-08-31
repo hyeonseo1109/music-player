@@ -82,6 +82,14 @@ class PlayerConnection(private val context: Context) {
     fun previous() { clearLoop(); controller?.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
     fun playAt(index: Int) { clearLoop(); controller?.let { it.seekTo(index, 0); it.prepare(); it.play() } }
+    /** Queue UI may be in Media3's shuffle traversal order, so an ID is safer than an index. */
+    fun playQueueItem(mediaId: String) {
+        clearLoop()
+        controller?.let { player ->
+            val index = (0 until player.mediaItemCount).indexOfFirst { player.getMediaItemAt(it).mediaId == mediaId }
+            if (index >= 0) { player.seekTo(index, 0); player.prepare(); player.play() }
+        }
+    }
     fun toggleShuffle() {
         // The service moves existing MediaItems in-place. Replacing the playlist here causes
         // ExoPlayer to re-buffer the current source and produces an audible playback hiccup.
@@ -102,7 +110,15 @@ class PlayerConnection(private val context: Context) {
         controller?.sendCustomCommand(PlaybackService.CLEAR_LOOP_COMMAND, Bundle.EMPTY)
         controller?.let(::publish)
     }
-    fun append(track: com.hendo.hendomusic.data.TrackEntity) { controller?.let { snapshotQueue(it); it.addMediaItem(track.asMediaItem()) } }
+    fun append(track: com.hendo.hendomusic.data.TrackEntity) {
+        controller?.let { player ->
+            snapshotQueue(player)
+            player.sendCustomCommand(
+                PlaybackService.APPEND_COMMAND,
+                Bundle().apply { putBundle(PlaybackService.ARG_MEDIA_ITEM, track.asMediaItem().toBundleIncludeLocalConfiguration()) },
+            )
+        }
+    }
     fun playNext(track: com.hendo.hendomusic.data.TrackEntity) {
         controller?.sendCustomCommand(
             PlaybackService.PLAY_NEXT_COMMAND,
@@ -138,9 +154,19 @@ class PlayerConnection(private val context: Context) {
 
     private fun publish(player: Player) {
         if (loopRange != null && player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackService.KEY_TRACK_ID) != loopTrackId) { loopRange = null; loopTrackId = null }
+        val queue = if (player.shuffleModeEnabled) {
+            buildList {
+                val timeline = player.currentTimeline
+                var index = timeline.getFirstWindowIndex(true)
+                while (index != androidx.media3.common.C.INDEX_UNSET) {
+                    add(player.getMediaItemAt(index))
+                    index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, true)
+                }
+            }
+        } else (0 until player.mediaItemCount).map(player::getMediaItemAt)
         mutableState.value = PlaybackState(
             true, player.currentMediaItem, player.isPlaying, player.currentPosition.coerceAtLeast(0),
-            player.duration.takeIf { it > 0 } ?: 0, (0 until player.mediaItemCount).map(player::getMediaItemAt),
+            player.duration.takeIf { it > 0 } ?: 0, queue,
             player.repeatMode, player.shuffleModeEnabled, loopRange, previousQueue.isNotEmpty(),
         )
     }

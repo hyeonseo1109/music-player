@@ -77,7 +77,7 @@ fun ReorderableQueueScreen(state: PlaybackState, viewModel: MainViewModel, back:
                         .shadow(elevation, RoundedCornerShape(14.dp))
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationY = if (dragging) dragOffset else 0f },
                 ) {
-                    Row(Modifier.heightIn(min = 72.dp).clickable { viewModel.player.playAt(index) }, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.heightIn(min = 72.dp).clickable { viewModel.player.playQueueItem(item.mediaId) }, verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.DragHandle,
                             "드래그하여 순서 변경",

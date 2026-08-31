@@ -103,7 +103,7 @@ class PlaybackService : MediaSessionService() {
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).build())
+                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(APPEND_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).build())
                 .build()
         }
 
@@ -125,13 +125,14 @@ class PlaybackService : MediaSessionService() {
                     toggleQueueShuffle()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
-                COMMAND_PLAY_NEXT -> Unit
+                COMMAND_PLAY_NEXT, COMMAND_APPEND -> Unit
                 COMMAND_STOP_PLAYBACK -> { player.pause(); player.clearMediaItems(); stopSelf(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
             }
             val itemBundle = args.getBundle(ARG_MEDIA_ITEM)
                 ?: return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_BAD_VALUE))
-            insertPlayNext(MediaItem.fromBundle(itemBundle))
+            if (customCommand.customAction == COMMAND_APPEND) appendMediaItem(MediaItem.fromBundle(itemBundle))
+            else insertPlayNext(MediaItem.fromBundle(itemBundle))
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
     }
@@ -150,6 +151,7 @@ class PlaybackService : MediaSessionService() {
     private fun insertPlayNext(item: MediaItem) {
         val at = (player.currentMediaItemIndex + 1).coerceIn(0, player.mediaItemCount)
         if (!player.shuffleModeEnabled) { player.addMediaItem(at, item); return }
+        if (player.mediaItemCount == 0) { player.addMediaItem(item); return }
         val timeline = player.currentTimeline
         val oldTraversal = buildList {
             var index = timeline.getFirstWindowIndex(true)
@@ -164,6 +166,27 @@ class PlaybackService : MediaSessionService() {
         shifted.add(currentTraversalIndex + 1, at)
         player.addMediaItem(at, item)
         player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(shifted.toIntArray(), System.nanoTime()))
+    }
+
+    /** Appending during shuffle joins the existing traversal at a fresh random later position. */
+    private fun appendMediaItem(item: MediaItem) {
+        if (!player.shuffleModeEnabled) { player.addMediaItem(item); return }
+        if (player.mediaItemCount == 0) { player.addMediaItem(item); return }
+        val timeline = player.currentTimeline
+        val oldTraversal = buildList {
+            var index = timeline.getFirstWindowIndex(true)
+            while (index != C.INDEX_UNSET) {
+                add(index)
+                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, true)
+            }
+        }
+        val addedIndex = player.mediaItemCount
+        val current = player.currentMediaItemIndex.coerceAtLeast(0)
+        val currentTraversal = oldTraversal.indexOf(current).coerceAtLeast(0)
+        val insertion = (currentTraversal + 1..oldTraversal.size).random()
+        player.addMediaItem(item)
+        val order = oldTraversal.toMutableList().apply { add(insertion, addedIndex) }
+        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order.toIntArray(), System.nanoTime()))
     }
 
     /** Change Media3's shuffle traversal atomically; never loop thousands of main-thread moves. */
@@ -201,7 +224,15 @@ class PlaybackService : MediaSessionService() {
         withContext(Dispatchers.Main) {
             player.setMediaItems(valid, index, savedSession?.positionMs ?: 0)
             player.repeatMode = savedSession?.repeatMode ?: Player.REPEAT_MODE_OFF
-            player.shuffleModeEnabled = savedSession?.shuffleEnabled ?: false
+            val shuffleEnabled = savedSession?.shuffleEnabled ?: false
+            if (shuffleEnabled) {
+                val savedOrder = savedSession?.shuffleOrder.orEmpty().split('|').filter { it.isNotBlank() }
+                val positions = savedOrder.mapNotNull { id -> valid.indexOfFirst { it.mediaId == id }.takeIf { it >= 0 } }
+                    .distinct().toMutableList()
+                positions += valid.indices.filter { it !in positions }
+                player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(positions.toIntArray(), System.nanoTime()))
+            }
+            player.shuffleModeEnabled = shuffleEnabled
             player.prepare()
             player.pause()
         }
@@ -223,6 +254,16 @@ class PlaybackService : MediaSessionService() {
         val positionMs = player.currentPosition.coerceAtLeast(0)
         val repeatMode = player.repeatMode
         val shuffleEnabled = player.shuffleModeEnabled
+        val shuffleOrder = if (shuffleEnabled) {
+            buildList {
+                val timeline = player.currentTimeline
+                var index = timeline.getFirstWindowIndex(true)
+                while (index != C.INDEX_UNSET) {
+                    add(player.getMediaItemAt(index).mediaId)
+                    index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, true)
+                }
+            }.joinToString("|")
+        } else ""
         withContext(Dispatchers.IO) {
             dao.replaceQueue(items)
             dao.saveSession(
@@ -230,7 +271,7 @@ class PlaybackService : MediaSessionService() {
                     currentTrackId = currentTrackId, currentIndex = currentIndex,
                     positionMs = positionMs, repeatMode = repeatMode,
                     shuffleEnabled = shuffleEnabled,
-                    shuffleOrder = "", updatedAt = System.currentTimeMillis(),
+                    shuffleOrder = shuffleOrder, updatedAt = System.currentTimeMillis(),
                 )
             )
         }
@@ -274,6 +315,7 @@ class PlaybackService : MediaSessionService() {
         const val KEY_TRACK_ID = "track_id"
         const val KEY_PLAY_NEXT = "play_next"
         const val COMMAND_PLAY_NEXT = "com.hendo.hendomusic.PLAY_NEXT"
+        const val COMMAND_APPEND = "com.hendo.hendomusic.APPEND"
         const val COMMAND_TOGGLE_QUEUE_SHUFFLE = "com.hendo.hendomusic.TOGGLE_QUEUE_SHUFFLE"
         const val ARG_MEDIA_ITEM = "media_item"
         const val COMMAND_SET_LOOP = "com.hendo.hendomusic.SET_LOOP"
@@ -282,6 +324,7 @@ class PlaybackService : MediaSessionService() {
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
         val PLAY_NEXT_COMMAND = SessionCommand(COMMAND_PLAY_NEXT, android.os.Bundle.EMPTY)
+        val APPEND_COMMAND = SessionCommand(COMMAND_APPEND, android.os.Bundle.EMPTY)
         val TOGGLE_QUEUE_SHUFFLE_COMMAND = SessionCommand(COMMAND_TOGGLE_QUEUE_SHUFFLE, android.os.Bundle.EMPTY)
         val SET_LOOP_COMMAND = SessionCommand(COMMAND_SET_LOOP, android.os.Bundle.EMPTY)
         val CLEAR_LOOP_COMMAND = SessionCommand(COMMAND_CLEAR_LOOP, android.os.Bundle.EMPTY)

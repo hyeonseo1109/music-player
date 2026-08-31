@@ -11,12 +11,13 @@ import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.network.ArtworkProvider
 import com.hendo.hendomusic.network.GenieLyricsProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import com.hendo.hendomusic.network.LrcLibLyricsProvider
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * A small bounded batch keeps scanning responsive and avoids making a network request for
- * every local song at once. Each later scan continues with the next missing items.
+ * Requests are batched so launch remains responsive, then the background worker continues
+ * through the library. User/embedded data is always guarded again in DAO writes.
  */
 class AutoMetadataEnricher(
     private val dao: AppDao,
@@ -28,21 +29,40 @@ class AutoMetadataEnricher(
     private val retryAfterMs = ConcurrentHashMap<String, Long>()
     private val retryDelayMs = 5 * 60_000L
 
-    suspend fun enrichMissing(limit: Int = 12) {
-        (dao.artworkEnrichmentCandidates(limit) + dao.lyricEnrichmentCandidates(limit))
-            .distinctBy { it.id }
-            .take(limit)
-            .forEach { enrichTrack(it) }
-    }
-    suspend fun enrichTrack(track: TrackEntity) {
+    suspend fun enrichMissing(limit: Int = 12): Int {
         val now = System.currentTimeMillis()
-        if (!inFlightTrackIds.add(track.id) || (retryAfterMs[track.id] ?: 0L) > now) return
+        val candidates = (dao.artworkEnrichmentCandidates(limit) + dao.lyricEnrichmentCandidates(limit))
+            .distinctBy { it.id }
+            .filter { (retryAfterMs[it.id] ?: 0L) <= now }
+            .take(limit)
+        // A second launcher (for example, app start plus a scan) may observe the
+        // same candidate while the first one is in flight. Count only work this
+        // batch actually acquired; otherwise its loop would spin on that item.
+        return candidates.count { enrichTrack(it) }
+    }
+
+    /** Continue bounded batches until there are no eligible missing metadata records left. */
+    suspend fun enrichAllMissing(batchSize: Int = 12) {
+        while (enrichMissing(batchSize) > 0) {
+            // Avoid monopolising the app's IO and network resources while a library is large.
+            delay(250)
+        }
+    }
+    suspend fun enrichTrack(track: TrackEntity): Boolean {
+        val now = System.currentTimeMillis()
+        if (!inFlightTrackIds.add(track.id) || (retryAfterMs[track.id] ?: 0L) > now) return false
+        // A valid remote miss is still a completed attempt.  Without a cooldown a
+        // large library immediately re-selects the same unresolved rows forever.
+        // This is in-memory only, so a later app launch can retry a newly indexed
+        // provider result without changing the persisted metadata priority rules.
+        retryAfterMs[track.id] = now + retryDelayMs
         try {
             if (track.customArtworkUri == null && track.albumArtUri.isNullOrBlank() && track.autoArtworkUri == null) enrichArtwork(track)
             if (dao.lyrics(track.id) == null) enrichLyrics(track)
-            retryAfterMs.remove(track.id)
+            return true
         } catch (_: Exception) {
             retryAfterMs[track.id] = now + retryDelayMs
+            return true
         } finally {
             inFlightTrackIds.remove(track.id)
         }
