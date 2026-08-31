@@ -59,6 +59,8 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     var draggedId by remember { mutableStateOf<Long?>(null) }
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
+    var dragTotalX by remember { mutableFloatStateOf(0f) }
+    var dragTotalY by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val playlistImport by viewModel.playlistImport.collectAsStateWithLifecycle()
@@ -130,28 +132,38 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 AlbumTile(album, viewModel, Modifier.pointerInput(album.id, rootAlbums.size) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { draggedId = album.id; dragX = 0f; dragY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
-                        onDrag = { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y },
-                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f },
+                        onDragStart = { draggedId = album.id; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onDrag = { change, amount ->
+                            change.consume(); dragX += amount.x; dragY += amount.y; dragTotalX += amount.x; dragTotalY += amount.y
+                            // Reorder while the finger moves, not only after it is released.
+                            val from = rootAlbums.indexOfFirst { it.id == album.id }
+                            val step = when {
+                                kotlin.math.abs(dragX) >= with(density) { 88.dp.toPx() } -> if (dragX > 0) 1 else -1
+                                kotlin.math.abs(dragY) >= with(density) { 104.dp.toPx() } -> if (dragY > 0) 2 else -2
+                                else -> 0
+                            }
+                            val to = (from + step).coerceIn(rootAlbums.indices)
+                            if (from >= 0 && step != 0 && from != to) { rootAlbums.add(to, rootAlbums.removeAt(from)); dragX = 0f; dragY = 0f }
+                        },
+                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f },
                         onDragEnd = {
                             val from = rootAlbums.indexOfFirst { it.id == album.id }
-                            val columnShift = (dragX / with(density) { 132.dp.toPx() }).roundToInt()
-                            val rowShift = (dragY / with(density) { 160.dp.toPx() }).roundToInt()
+                            val columnShift = (dragTotalX / with(density) { 132.dp.toPx() }).roundToInt()
+                            val rowShift = (dragTotalY / with(density) { 160.dp.toPx() }).roundToInt()
                             val target = (from + columnShift + rowShift * 2).coerceIn(rootAlbums.indices)
                             val targetAlbum = rootAlbums.getOrNull(target)
-                            val folderTarget = if (dragX > with(density) { 72.dp.toPx() }) {
-                                orderedFolders.getOrNull(kotlin.math.abs(rowShift).coerceAtMost(orderedFolders.lastIndex))
-                            } else null
+                            val folderTarget = orderedFolders.getOrNull(kotlin.math.abs(rowShift).coerceAtMost(orderedFolders.lastIndex))
+                                ?.takeIf { kotlin.math.abs(dragTotalY) > with(density) { 24.dp.toPx() } }
                             if (folderTarget != null) {
                                 // Grid mode supports the same album → folder drop as list mode.
                                 viewModel.moveAlbumToFolder(album.id, folderTarget.id)
-                            } else if (from >= 0 && targetAlbum != null && targetAlbum.id != album.id && kotlin.math.abs(dragX) > with(density) { 34.dp.toPx() } && kotlin.math.abs(dragY) > with(density) { 34.dp.toPx() }) {
+                            } else if (from >= 0 && targetAlbum != null && targetAlbum.id != album.id && (kotlin.math.abs(dragX) > with(density) { 34.dp.toPx() } || kotlin.math.abs(dragY) > with(density) { 34.dp.toPx() })) {
                                 // Dropping an album onto another tile creates a named folder, matching list mode.
                                 pendingPair = album.id to targetAlbum.id
                             } else if (from >= 0 && target != from) {
                                 rootAlbums.add(target, rootAlbums.removeAt(from)); viewModel.reorderAlbums(rootAlbums.map { it.id })
                             }
-                            draggedId = null; dragX = 0f; dragY = 0f
+                            draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f
                         },
                     )
                 }, { openAlbum(album.id) }) { menuTarget = AlbumMenuTarget(album.id, album.name, false) }
@@ -165,7 +177,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 val dragging = draggedId == album.id
-                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, animationSpec = tween(110), label = "albumDrag")
+                val scale by animateFloatAsState(if (dragging) 1.03f else 1f, animationSpec = tween(70), label = "albumDrag")
                 AlbumCard(
                     album,
                     Modifier
@@ -179,10 +191,10 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                     val from = rootAlbums.indexOfFirst { it.id == album.id }
                                     val rowPx = with(density) { 82.dp.toPx() }
                                     val targetRoot = (from + (dragY / rowPx).roundToInt()).coerceIn(rootAlbums.indices)
-                                    if (dragX > with(density) { 72.dp.toPx() }) {
-                                        val folderTarget = ui.folders.getOrNull((dragY / rowPx).roundToInt().coerceAtLeast(0))
-                                        if (folderTarget != null) viewModel.moveAlbumToFolder(album.id, folderTarget.id)
-                                        else rootAlbums.getOrNull(targetRoot)?.takeIf { it.id != album.id }?.let { pendingPair = album.id to it.id }
+                                    val folderTarget = ui.folders.getOrNull((kotlin.math.abs(dragY) / rowPx).roundToInt().coerceAtLeast(0))
+                                        ?.takeIf { kotlin.math.abs(dragY) > with(density) { 24.dp.toPx() } }
+                                    if (folderTarget != null) {
+                                        viewModel.moveAlbumToFolder(album.id, folderTarget.id)
                                     } else if (from >= 0 && targetRoot != from) {
                                         rootAlbums.add(targetRoot, rootAlbums.removeAt(from))
                                         viewModel.reorderAlbums(rootAlbums.map { it.id })
@@ -229,7 +241,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     Surface(modifier.fillMaxWidth().then(dragModifier).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp).padding(end = 10.dp))
+            AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp))
             Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(album.name, style = MaterialTheme.typography.titleMedium); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall) }
             IconButton(more) { Icon(Icons.Default.MoreVert, "앨범 더보기") }
         }

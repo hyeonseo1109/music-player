@@ -78,7 +78,14 @@ class PlayerConnection(private val context: Context) {
             player.prepare(); player.play()
         }
     } }
-    fun next() { clearLoop(); controller?.seekToNextMediaItem() }
+    fun next() {
+        clearLoop()
+        controller?.let { player ->
+            if (!player.hasNextMediaItem() && player.mediaItemCount > 0) {
+                player.seekTo(0, 0); player.prepare(); player.play()
+            } else player.seekToNextMediaItem()
+        }
+    }
     fun previous() { clearLoop(); controller?.seekToPreviousMediaItem() }
     fun seekTo(ms: Long) { if (loopRange?.let { ms < it.startMs || ms > it.endMs } == true) clearLoop(); controller?.seekTo(ms) }
     fun playAt(index: Int) { clearLoop(); controller?.let { it.seekTo(index, 0); it.prepare(); it.play() } }

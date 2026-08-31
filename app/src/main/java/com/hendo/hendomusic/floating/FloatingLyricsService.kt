@@ -65,7 +65,7 @@ class FloatingLyricsService : Service() {
         params = WindowManager.LayoutParams(
             620, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START; x = settings.overlayX; y = settings.overlayY }
         root = LinearLayout(this).apply {
@@ -100,7 +100,8 @@ class FloatingLyricsService : Service() {
         collapseLater()
     }
     private fun button(icon: Int, click: () -> Unit) = ImageButton(this).apply { setImageResource(icon); setColorFilter(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { click() } }
-    private fun collapseLater() { root?.postDelayed({ if(expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }, 5_000) }
+    private fun collapseLater() { root?.postDelayed({ if(expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }, 2_000) }
+    private fun collapseControls() { if (expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }
     private fun refresh() {
         val player = controller ?: return
         if (!player.isPlaying) { stopSelf(); return }
@@ -162,6 +163,7 @@ class FloatingLyricsService : Service() {
                 MotionEvent.ACTION_DOWN -> { downX=e.rawX; downY=e.rawY; startX=params.x; startY=params.y; return true }
                 MotionEvent.ACTION_MOVE -> { params.x=(startX+e.rawX-downX).toInt(); params.y=(startY+e.rawY-downY).toInt(); clampPosition(); return true }
                 MotionEvent.ACTION_UP -> { clampPosition(); scope.launch { (application as LuminaraApplication).container.preferences.setOverlayPosition(params.x, params.y) }; if(abs(e.rawX-downX)<12 && abs(e.rawY-downY)<12) v.performClick(); return true }
+                MotionEvent.ACTION_OUTSIDE -> { collapseControls(); return true }
             }; return false
         }
     }
