@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="132dp"
+    android:background="#FF160B28">
+
+    <ImageView
+        android:id="@+id/notification_artwork"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.38"
+        android:scaleType="centerCrop" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <TextView
+            android:id="@+id/notification_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="marquee"
+            android:singleLine="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/notification_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#E6FFFFFF"
+            android:textSize="13sp" />
+
+        <ProgressBar
+            android:id="@+id/notification_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="10dp"
+            android:progressTint="#FFA855F7" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/notification_previous"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="이전 곡"
+                android:src="@android:drawable/ic_media_previous"
+                android:tint="#FFFFFFFF" />
+
+            <ImageButton
+                android:id="@+id/notification_play_pause"
+                android:layout_width="52dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="재생 또는 일시정지"
+                android:tint="#FFFFFFFF" />
+
+            <ImageButton
+                android:id="@+id/notification_next"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="다음 곡"
+                android:src="@android:drawable/ic_media_next"
+                android:tint="#FFFFFFFF" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/notification_favorite"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="좋아요"
+                android:src="@android:drawable/btn_star_big_on"
+                android:tint="#FFE9D5FF" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

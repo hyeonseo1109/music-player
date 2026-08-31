@@ -2,6 +2,11 @@ package com.hendo.hendomusic.playback
 
 import android.content.Intent
 import android.app.PendingIntent
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import android.graphics.BitmapFactory
+import android.widget.RemoteViews
 import android.os.Handler
 import android.os.Looper
 import androidx.core.net.toUri
@@ -13,7 +18,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaNotification
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -340,18 +344,62 @@ class PlaybackService : MediaSessionService() {
 }
 
 @UnstableApi
-private class HendoNotificationProvider(private val appContext: android.content.Context) : DefaultMediaNotificationProvider(appContext) {
-    override fun addNotificationActions(session: MediaSession, mediaButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>, builder: NotificationCompat.Builder, actionFactory: MediaNotification.ActionFactory): IntArray {
-        val compact = super.addNotificationActions(session, mediaButtons, builder, actionFactory)
+private class HendoNotificationProvider(private val appContext: android.content.Context) : MediaNotification.Provider {
+    init {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = appContext.getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "HendoMusic 재생", NotificationManager.IMPORTANCE_LOW))
+        }
+    }
+
+    override fun createNotification(
+        session: MediaSession,
+        mediaButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>,
+        actionFactory: MediaNotification.ActionFactory,
+        callback: MediaNotification.Provider.Callback,
+    ): MediaNotification {
+        val player = session.player
+        val metadata = player.mediaMetadata
         val launch = Intent(appContext, com.hendo.hendomusic.MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
-        builder.setContentIntent(PendingIntent.getActivity(appContext, 2001, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            .setAutoCancel(false)
-            .setShowWhen(false)
+        val contentIntent = PendingIntent.getActivity(appContext, 2001, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val previous = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_previous), "이전 곡", Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+        val playPause = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play), if (player.isPlaying) "일시정지" else "재생", Player.COMMAND_PLAY_PAUSE)
+        val next = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_next), "다음 곡", Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+        val favorite = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)
+        val views = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player).apply {
+            setTextViewText(com.hendo.hendomusic.R.id.notification_title, metadata.title ?: "HendoMusic")
+            setTextViewText(com.hendo.hendomusic.R.id.notification_artist, metadata.artist ?: "알 수 없는 아티스트")
+            setProgressBar(com.hendo.hendomusic.R.id.notification_progress, player.duration.coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), player.currentPosition.coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), false)
+            setImageViewResource(com.hendo.hendomusic.R.id.notification_play_pause, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_previous, previous.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_play_pause, playPause.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
+            metadata.artworkUri?.let { uri ->
+                runCatching { appContext.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream) }
+                    .getOrNull()?.let { setImageViewBitmap(com.hendo.hendomusic.R.id.notification_artwork, it) }
+            }
+        }
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(contentIntent)
+            .setDeleteIntent(actionFactory.createNotificationDismissalIntent(session))
+            .setOngoing(player.isPlaying)
             .setOnlyAlertOnce(true)
-            .setColor(0xFF8B5CF6.toInt())
-        builder.addAction(actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY))
-        builder.addAction(actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel), "재생 종료", PlaybackService.COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY))
-        return compact
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setCustomContentView(views)
+            .setCustomBigContentView(views)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .build()
+        return MediaNotification(NOTIFICATION_ID, notification)
+    }
+
+    override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean = false
+
+    private companion object {
+        const val CHANNEL_ID = "hendo_playback"
+        const val NOTIFICATION_ID = 1001
     }
 }
 
