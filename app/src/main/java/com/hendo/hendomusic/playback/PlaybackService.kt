@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import android.graphics.BitmapFactory
 import android.widget.RemoteViews
 import android.os.Handler
 import android.os.Looper
@@ -381,13 +380,11 @@ private class HendoNotificationProvider(private val appContext: android.content.
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close.actionIntent)
-            metadata.artworkUri?.let { uri ->
-                runCatching { appContext.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream) }
-                    .getOrNull()?.let { setImageViewBitmap(com.hendo.hendomusic.R.id.notification_artwork, it) }
-            }
         }
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            // Android requires a small icon, but this transparent glyph avoids a second
+            // visible app icon in the custom player card.
+            .setSmallIcon(com.hendo.hendomusic.R.drawable.ic_notification_status)
             .setContentIntent(contentIntent)
             .setDeleteIntent(actionFactory.createNotificationDismissalIntent(session))
             // Playback notification remains pinned until the explicit close action is used.

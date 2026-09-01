@@ -4,13 +4,6 @@
     android:layout_height="132dp"
     android:background="#FF160B28">
 
-    <ImageView
-        android:id="@+id/notification_artwork"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:alpha="0.82"
-        android:scaleType="centerCrop" />
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -72,39 +65,42 @@
 
             <ImageButton
                 android:id="@+id/notification_previous"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="이전 곡"
                 android:src="@android:drawable/ic_media_previous"
                 android:tint="#FFFFFFFF" />
 
+            <TextView android:layout_width="10dp" android:layout_height="1dp" />
+
             <ImageButton
                 android:id="@+id/notification_play_pause"
-                android:layout_width="40dp"
-                android:layout_height="36dp"
+                android:layout_width="30dp"
+                android:layout_height="28dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="재생 또는 일시정지"
                 android:tint="#FFFFFFFF" />
 
+            <TextView android:layout_width="10dp" android:layout_height="1dp" />
+
             <ImageButton
                 android:id="@+id/notification_next"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="다음 곡"
                 android:src="@android:drawable/ic_media_next"
                 android:tint="#FFFFFFFF" />
 
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:layout_width="16dp"
+                android:layout_height="1dp" />
 
             <ImageButton
                 android:id="@+id/notification_favorite"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="좋아요"
                 android:src="@drawable/ic_notification_heart"
@@ -112,8 +108,8 @@
 
             <ImageButton
                 android:id="@+id/notification_close"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="재생 종료"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
