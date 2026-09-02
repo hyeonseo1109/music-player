@@ -15,7 +15,11 @@ internal data class GenieSongCandidate(val songId: String, val title: String, va
 
 class GenieLyricsProvider {
     suspend fun search(title: String, artist: String, album: String): GenieLyricsResult? = withContext(Dispatchers.IO) {
-        val candidate = requestCandidates(title, artist).firstOrNull {
+        val candidates = requestCandidates(title, artist)
+        candidates.forEach { row ->
+            Log.d("GenieLyrics", "auto candidate songId=${row.songId} title=${row.title} artist=${row.artist} accepted=${MetadataConfidence.genieLyricsHigh(title, artist, row.title, row.artist)}")
+        }
+        val candidate = candidates.firstOrNull {
             MetadataConfidence.genieLyricsHigh(title, artist, it.title, it.artist)
         } ?: return@withContext null
         lyricsFor(candidate)
@@ -30,14 +34,17 @@ class GenieLyricsProvider {
     }
 
     private fun requestCandidates(title: String, artist: String): List<GenieSongCandidate> {
-        val searchUrl = "https://www.genie.co.kr/search/searchMain".toHttpUrl().newBuilder()
-            .addQueryParameter("query", "$artist $title")
-            .build()
-        val doc = Jsoup.connect(searchUrl.toString())
-            // Genie redirects its Android user-agent endpoint to clear-text mobile HTTP.
-            // The desktop endpoint is HTTPS and serves the same public search markup.
-            .userAgent(desktopUserAgent).timeout(12_000).get()
-        return parseCandidates(doc.outerHtml())
+        fun stripped(value: String) = value.replace(Regex("\\s*[\\(\\[（][^\\)\\]）]*[\\)\\]）]"), "").trim()
+        // Search with the file tags first, then retry the common "title(alias)" form.
+        // Local music tags frequently contain translations while Genie stores only the base name.
+        val queries = listOf("$artist $title", "${stripped(artist)} ${stripped(title)}").distinct().filter { it.isNotBlank() }
+        return queries.flatMap { query ->
+            val searchUrl = "https://www.genie.co.kr/search/searchMain".toHttpUrl().newBuilder()
+                .addQueryParameter("query", query).build()
+            val doc = Jsoup.connect(searchUrl.toString())
+                .userAgent(desktopUserAgent).timeout(12_000).get()
+            parseCandidates(doc.outerHtml())
+        }.distinctBy { it.songId }
     }
 
     private fun lyricsFor(candidate: GenieSongCandidate): GenieLyricsResult? {

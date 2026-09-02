@@ -6,6 +6,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.MaterialTheme
@@ -48,16 +51,21 @@ fun PurpleAtmosphere(content: @Composable BoxScope.() -> Unit) {
                 radius = size.width * .55f,
                 center = Offset(size.width * .94f, size.height * .25f),
             )
-            drawLine(
-                brush = Brush.horizontalGradient(listOf(Color.Transparent, Color(0x809B4DFF), Color.Transparent)),
-                start = Offset(0f, size.height * .12f),
-                end = Offset(size.width, size.height * .12f),
-                strokeWidth = 1.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
         }
         content()
     }
+}
+
+/** A header-owned divider: it always follows the title in both portrait and landscape. */
+@Composable
+fun HeaderGradientDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, top = 3.dp, bottom = 7.dp)
+            .height(1.dp)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0x809B4DFF), Color.Transparent))),
+    )
 }
 
 @Composable fun Modifier.purpleGlass(radius: Int = 20): Modifier {

@@ -18,11 +18,14 @@ object MetadataConfidence {
     ): Boolean {
         val sameTitle = matches(title, candidateTitle)
         val sameArtist = matches(artist, candidateArtist)
-        val closeDuration = candidateDurationMs != null && kotlin.math.abs(durationMs - candidateDurationMs) <= 8_000L
+        // Keep duration conservative when the provider supplies it; Genie results have no
+        // reliable duration and take the explicit fallback path below.
+        val closeDuration = candidateDurationMs == null || durationMs <= 0L || kotlin.math.abs(durationMs - candidateDurationMs) <= 8_000L
         return sameTitle && sameArtist && closeDuration
     }
 
-    /** Genie has no reliable duration in search results, so require exact normalized title + artist. */
+    /** Genie has no reliable duration in search results. Parenthetical aliases and feat tags
+     * are removed by normalize(), after which both title and artist still need to match. */
     fun genieLyricsHigh(title: String, artist: String, candidateTitle: String?, candidateArtist: String?): Boolean =
         strictMatches(title, candidateTitle) && strictMatches(artist, candidateArtist)
 
@@ -47,7 +50,7 @@ object MetadataConfidence {
 
     fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
         .lowercase(Locale.ROOT)
-        .replace(Regex("\\(.*?\\)|\\[.*?]"), "")
+        .replace(Regex("[\\(\\[（][^\\)\\]）]*[\\)\\]）]"), "")
         .replace(Regex("(feat\\.?|ft\\.?).*$"), "")
         .replace(Regex("[^\\p{L}\\p{N}]"), "")
 }

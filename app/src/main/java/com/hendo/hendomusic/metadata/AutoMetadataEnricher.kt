@@ -58,7 +58,19 @@ class AutoMetadataEnricher(
         retryAfterMs[track.id] = now + retryDelayMs
         try {
             if (track.customArtworkUri == null && track.albumArtUri.isNullOrBlank() && track.autoArtworkUri == null) enrichArtwork(track)
-            if (dao.lyrics(track.id) == null) enrichLyrics(track)
+            val existingLyrics = dao.lyrics(track.id)
+            when {
+                existingLyrics == null -> enrichLyrics(track)
+                existingLyrics.source.startsWith("AUTO_") && existingLyrics.plainText.isBlank() -> {
+                    // A prior failed provider result used to leave an empty AUTO row behind.
+                    // That row blocked every future enrichment attempt while user-authored
+                    // lyrics must remain immutable to background work.
+                    Log.d("AutoLyrics", "clearing empty auto row track=${track.id} source=${existingLyrics.source}")
+                    dao.deleteLyrics(track.id)
+                    enrichLyrics(track)
+                }
+                else -> Log.d("AutoLyrics", "skip existing lyrics track=${track.id} source=${existingLyrics.source}")
+            }
             return true
         } catch (_: Exception) {
             retryAfterMs[track.id] = now + retryDelayMs
@@ -93,6 +105,10 @@ class AutoMetadataEnricher(
                     it.trackTitle, it.trackArtist, it.durationMs,
                 )
             }
+        candidates.filter { it.plainText.isNotBlank() }.forEach { result ->
+            val accepted = MetadataConfidence.lyricsHigh(track.title, track.artist, track.durationMs, result.trackTitle, result.trackArtist, result.durationMs)
+            Log.d("AutoLyrics", "candidate track=${track.id} title=${result.trackTitle} artist=${result.trackArtist} duration=${result.durationMs} accepted=$accepted")
+        }
         if (candidate == null) {
             Log.d("AutoLyrics", "LRCLIB miss; Genie search start track=${track.id}")
             val genieResult = try {

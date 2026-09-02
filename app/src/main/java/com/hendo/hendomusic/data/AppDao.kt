@@ -31,7 +31,7 @@ interface AppDao {
     suspend fun applyAutoArtworkIfEligible(id: String, uri: String, source: String, now: Long): Int
     @Query("SELECT * FROM tracks WHERE customArtworkUri IS NULL AND (albumArtUri IS NULL OR albumArtUri = '') AND autoArtworkUri IS NULL LIMIT :limit")
     suspend fun artworkEnrichmentCandidates(limit: Int): List<TrackEntity>
-    @Query("SELECT tracks.* FROM tracks LEFT JOIN lyrics ON lyrics.trackId = tracks.id WHERE lyrics.id IS NULL LIMIT :limit")
+    @Query("SELECT tracks.* FROM tracks LEFT JOIN lyrics ON lyrics.trackId = tracks.id WHERE lyrics.id IS NULL OR (lyrics.source LIKE 'AUTO_%' AND TRIM(lyrics.plainText) = '') LIMIT :limit")
     suspend fun lyricEnrichmentCandidates(limit: Int): List<TrackEntity>
     @Query("DELETE FROM album_tracks WHERE trackId=:trackId") suspend fun removeTrackFromAlbums(trackId: String)
     @Query("DELETE FROM playback_queue WHERE trackId=:trackId") suspend fun removeTrackFromSavedQueue(trackId: String)
@@ -61,6 +61,7 @@ interface AppDao {
         trackIds.distinct().forEachIndexed { index, trackId -> updateAlbumTrackOrder(albumId, trackId, index) }
     }
     @Query("DELETE FROM album_tracks WHERE albumId=:albumId") suspend fun clearAlbumTracks(albumId: Long)
+    @Query("DELETE FROM album_tracks WHERE albumId=:albumId AND trackId IN (:trackIds)") suspend fun removeAlbumTracks(albumId: Long, trackIds: List<String>)
     @Transaction suspend fun createAlbumWithTracks(album: UserAlbumEntity, trackIds: List<String>): Long {
         val albumId = insertAlbum(album)
         trackIds.distinct().forEachIndexed { index, trackId ->

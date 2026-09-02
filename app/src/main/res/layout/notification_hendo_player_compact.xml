@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:background="@android:color/transparent"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+        <TextView
+            android:id="@+id/notification_compact_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp" />
+        <TextView
+            android:id="@+id/notification_compact_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#E6FFFFFF"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/notification_compact_play_pause"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_marginEnd="10dp"
+        android:background="@null"
+        android:contentDescription="재생 또는 일시정지"
+        android:src="@drawable/ic_notification_play"
+        android:tint="#FFFFFFFF" />
+
+    <ImageView
+        android:id="@+id/notification_compact_next"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="@null"
+        android:contentDescription="다음 곡"
+        android:src="@drawable/ic_notification_next"
+        android:tint="#FFFFFFFF" />
+</LinearLayout>

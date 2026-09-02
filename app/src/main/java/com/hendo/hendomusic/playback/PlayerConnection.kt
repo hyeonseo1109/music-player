@@ -142,6 +142,16 @@ class PlayerConnection(private val context: Context) {
         }
     }
     fun clear() { controller?.let { snapshotQueue(it); it.clearMediaItems() } }
+    /** Rebind current metadata without resetting playback when a tag or cover is edited. */
+    fun refreshCurrent(track: com.hendo.hendomusic.data.TrackEntity) {
+        controller?.let { player ->
+            val index = player.currentMediaItemIndex
+            if (index >= 0 && player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackService.KEY_TRACK_ID) == track.id) {
+                val instanceId = player.currentMediaItem?.mediaId.orEmpty()
+                player.replaceMediaItem(index, track.asMediaItem().buildUpon().setMediaId(instanceId).build())
+            }
+        }
+    }
     /** Exchanges the current queue with the immediately preceding queue. */
     fun restorePreviousQueue() { controller?.let { player ->
         if (previousQueue.isEmpty()) return

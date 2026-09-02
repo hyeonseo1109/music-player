@@ -3,6 +3,7 @@
 package com.hendo.hendomusic.ui
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -57,21 +59,63 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     var renameTarget by remember { mutableStateOf<AlbumMenuTarget?>(null) }
     var deleteTarget by remember { mutableStateOf<AlbumMenuTarget?>(null) }
     var pendingPair by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-    var gridMode by rememberSaveable { mutableStateOf(true) }
+    val gridMode = ui.settings.albumGridMode
+    var columnsOpen by remember { mutableStateOf(false) }
     val rootAlbums = remember { mutableStateListOf<UserAlbumEntity>() }
     val orderedFolders = remember { mutableStateListOf<AlbumFolderEntity>() }
     var draggedId by remember { mutableStateOf<Long?>(null) }
+    var draggedFolderId by remember { mutableStateOf<Long?>(null) }
+    var folderDragX by remember { mutableFloatStateOf(0f) }
+    var folderDragY by remember { mutableFloatStateOf(0f) }
+    var folderPointer by remember { mutableStateOf<Offset?>(null) }
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragTotalX by remember { mutableFloatStateOf(0f) }
     var dragTotalY by remember { mutableFloatStateOf(0f) }
     var dragPointer by remember { mutableStateOf<Offset?>(null) }
+    var hoverKey by remember { mutableStateOf<String?>(null) }
+    var hoverKind by remember { mutableStateOf<String?>(null) }
+    var hoverSinceMs by remember { mutableLongStateOf(0L) }
+    var hoverActionApplied by remember { mutableStateOf<String?>(null) }
     val folderBounds = remember { mutableStateMapOf<Long, Rect>() }
     val albumBounds = remember { mutableStateMapOf<Long, Rect>() }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val playlistImport by viewModel.playlistImport.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    fun resetHover() {
+        hoverKey = null; hoverKind = null; hoverSinceMs = 0L; hoverActionApplied = null
+    }
+    /** Dwell is measured from bounds hit-testing, not release position.  The same target/action
+     * is guarded so a stationary pointer cannot repeatedly create folders or move an album. */
+    fun rootAlbumHover(album: UserAlbumEntity, pointer: Offset?, targetAlbum: UserAlbumEntity?, targetFolder: AlbumFolderEntity?): Boolean {
+        val target = targetAlbum?.let { "album:${it.id}" } ?: targetFolder?.let { "folder:${it.id}" } ?: run { resetHover(); return false }
+        val bounds = targetAlbum?.let { albumBounds[it.id] } ?: targetFolder?.let { folderBounds[it.id] } ?: return false
+        val p = pointer ?: return false
+        val center = p.x in (bounds.left + bounds.width * .24f)..(bounds.right - bounds.width * .24f) && p.y in (bounds.top + bounds.height * .24f)..(bounds.bottom - bounds.height * .24f)
+        val kind = if (center) "merge" else "reorder"
+        if (target != hoverKey || kind != hoverKind) {
+            hoverKey = target; hoverKind = kind; hoverSinceMs = SystemClock.uptimeMillis(); hoverActionApplied = null
+            return true
+        }
+        val action = "$target:$kind"
+        if (hoverActionApplied == action || SystemClock.uptimeMillis() - hoverSinceMs < 200L) return true
+        hoverActionApplied = action
+        when {
+            kind == "merge" && targetFolder != null -> viewModel.moveAlbumToFolder(album.id, targetFolder.id)
+            kind == "merge" && targetAlbum != null -> pendingPair = album.id to targetAlbum.id
+            kind == "reorder" && targetAlbum != null -> {
+                val from = rootAlbums.indexOfFirst { it.id == album.id }
+                val targetIndex = rootAlbums.indexOfFirst { it.id == targetAlbum.id }
+                if (from >= 0 && targetIndex >= 0 && from != targetIndex) {
+                    rootAlbums.add(targetIndex, rootAlbums.removeAt(from))
+                    viewModel.reorderAlbums(rootAlbums.map { it.id })
+                }
+            }
+        }
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        return true
+    }
     val artworkPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         val target = menuTarget ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
@@ -100,37 +144,51 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             title = { Text("내 앨범") },
             actions = {
                 IconButton({ createFolder = true }) { Icon(Icons.Default.CreateNewFolder, "빈 폴더 만들기") }
-                IconButton({ gridMode = !gridMode }) { Icon(if (gridMode) Icons.Default.ViewList else Icons.Default.GridView, if (gridMode) "목록형 보기" else "앨범형 보기") }
+                if (gridMode) Box {
+                    TextButton({ columnsOpen = true }) { Text("${ui.settings.albumGridColumns}열") ; Icon(Icons.Default.ArrowDropDown, null) }
+                    DropdownMenu(columnsOpen, { columnsOpen = false }) { (2..4).forEach { count -> DropdownMenuItem({ Text("${count}열") }, { viewModel.setAlbumGridColumns(count); columnsOpen = false }) } }
+                }
+                IconButton({ viewModel.setAlbumGridMode(!gridMode) }) { Icon(if (gridMode) Icons.Default.ViewList else Icons.Default.GridView, if (gridMode) "목록형 보기" else "앨범형 보기") }
                 IconButton({ createAlbum = true }) { Icon(Icons.Default.Add, "앨범 만들기") }
             },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
         )
-        Text(
-            if (gridMode) "앨범형 보기 · 앨범을 길게 눌러 순서를 옮기거나 다른 앨범과 묶을 수 있습니다" else "목록형 보기 · 앨범을 길게 눌러 순서를 옮기거나 다른 앨범과 묶을 수 있습니다",
-            Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        HeaderGradientDivider()
         Box(Modifier.weight(1f)) {
-        if (gridMode) LazyVerticalGrid(columns = GridCells.Adaptive(132.dp), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (gridMode) LazyVerticalGrid(columns = GridCells.Fixed(ui.settings.albumGridColumns), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") } }
             if (ui.settings.trackListening) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder ->
+                val draggingFolder = draggedFolderId == folder.id
                 FolderTile(
                     folder,
                     ui.albums.filter { it.folderId == folder.id },
                     viewModel,
-                    Modifier.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) {
+                    Modifier.zIndex(if (draggingFolder) 2f else 0f).graphicsLayer {
+                        translationX = if (draggingFolder) folderDragX else 0f
+                        translationY = if (draggingFolder) folderDragY else 0f
+                        scaleX = if (draggingFolder) 1.03f else 1f
+                        scaleY = if (draggingFolder) 1.03f else 1f
+                        alpha = if (draggingFolder) .92f else 1f
+                    }.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) {
                         detectDragGesturesAfterLongPress(
-                            onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+                            onDragStart = { point -> draggedFolderId = folder.id; folderDragX = 0f; folderDragY = 0f; folderPointer = (folderBounds[folder.id]?.topLeft ?: Offset.Zero) + point; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
                             onDrag = { change, amount ->
                                 change.consume()
-                                val from = orderedFolders.indexOfFirst { it.id == folder.id }
-                                val step = if (kotlin.math.abs(amount.y) >= kotlin.math.abs(amount.x)) if (amount.y > 0) 1 else -1 else 0
-                                val to = (from + step).coerceIn(orderedFolders.indices)
-                                if (from >= 0 && from != to) orderedFolders.add(to, orderedFolders.removeAt(from))
+                                folderDragX += amount.x; folderDragY += amount.y; folderPointer = (folderPointer ?: change.position) + amount
+                                val target = orderedFolders.firstOrNull { it.id != folder.id && folderBounds[it.id]?.contains(folderPointer ?: Offset.Unspecified) == true }
+                                if (target != null) {
+                                    val key = "folder:${target.id}"
+                                    if (hoverKey != key) { hoverKey = key; hoverKind = "reorder"; hoverSinceMs = SystemClock.uptimeMillis(); hoverActionApplied = null }
+                                    if (hoverActionApplied == null && SystemClock.uptimeMillis() - hoverSinceMs >= 200L) {
+                                        val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = orderedFolders.indexOfFirst { it.id == target.id }
+                                        if (from >= 0 && to >= 0) orderedFolders.add(to, orderedFolders.removeAt(from))
+                                        hoverActionApplied = key; haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                } else resetHover()
                             },
-                            onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) },
-                            onDragCancel = {},
+                            onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }); draggedFolderId = null; folderDragX = 0f; folderDragY = 0f; folderPointer = null; resetHover() },
+                            onDragCancel = { draggedFolderId = null; folderDragX = 0f; folderDragY = 0f; folderPointer = null; resetHover() },
                         )
                     },
                     { openFolder(folder.id) },
@@ -153,7 +211,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                             // creation drop, so reordering never steals that gesture.
                             val hitAlbum = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
                             val hitFolder = orderedFolders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
-                            if (hitAlbum == null && hitFolder == null) {
+                            if (!rootAlbumHover(album, dragPointer, hitAlbum, hitFolder) && hitAlbum == null && hitFolder == null) {
                                 val from = rootAlbums.indexOfFirst { it.id == album.id }
                                 val horizontal = (dragX / with(density) { 132.dp.toPx() }).toInt()
                                 val vertical = (dragY / with(density) { 160.dp.toPx() }).toInt() * 2
@@ -165,7 +223,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                 }
                             }
                         },
-                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null },
+                        onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null; resetHover() },
                         onDragEnd = {
                             val from = rootAlbums.indexOfFirst { it.id == album.id }
                             val columnShift = (dragTotalX / with(density) { 132.dp.toPx() }).roundToInt()
@@ -186,17 +244,21 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                             } else if (from >= 0 && target != from) {
                                 rootAlbums.add(target, rootAlbums.removeAt(from)); viewModel.reorderAlbums(rootAlbums.map { it.id })
                             }
-                            draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null
+                            draggedId = null; dragX = 0f; dragY = 0f; dragTotalX = 0f; dragTotalY = 0f; dragPointer = null; resetHover()
                         },
                     )
                 }, { openAlbum(album.id) }) { menuTarget = AlbumMenuTarget(album.id, album.name, false) }
             }
-        } else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") }; if (ui.settings.trackListening) SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
+        } else LazyColumn(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") }
+                if (ui.settings.trackListening) SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") }
+            }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder ->
                 val members = ui.albums.filter { it.folderId == folder.id }
-                FolderCard(folder, members, viewModel, Modifier.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); val from = orderedFolders.indexOfFirst { it.id == folder.id }; val to = (from + if (amount.y > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) orderedFolders.add(to, orderedFolders.removeAt(from)) }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }) }, onDragCancel = {}) }, { openFolder(folder.id) }) { menuTarget = AlbumMenuTarget(folder.id, folder.name, true) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+                val draggingFolder = draggedFolderId == folder.id
+                FolderCard(folder, members, viewModel, Modifier.zIndex(if (draggingFolder) 2f else 0f).graphicsLayer { translationY = if (draggingFolder) folderDragY else 0f; scaleX = if (draggingFolder) 1.03f else 1f; scaleY = if (draggingFolder) 1.03f else 1f; alpha = if (draggingFolder) .92f else 1f }.onGloballyPositioned { folderBounds[folder.id] = it.boundsInRoot() }.pointerInput(folder.id, orderedFolders.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedFolderId = folder.id; folderDragY = 0f; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); folderDragY += amount.y; val from = orderedFolders.indexOfFirst { it.id == folder.id }; if (kotlin.math.abs(folderDragY) >= with(density) { 56.dp.toPx() }) { val to = (from + if (folderDragY > 0) 1 else -1).coerceIn(orderedFolders.indices); if (from != to) { orderedFolders.add(to, orderedFolders.removeAt(from)); haptics.performHapticFeedback(HapticFeedbackType.LongPress) }; folderDragY = 0f } }, onDragEnd = { viewModel.reorderFolders(orderedFolders.map { it.id }); draggedFolderId = null; folderDragY = 0f }, onDragCancel = { draggedFolderId = null; folderDragY = 0f }) }, { openFolder(folder.id) }) { menuTarget = AlbumMenuTarget(folder.id, folder.name, true) }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .58f))
             }
             items(rootAlbums, key = { "album:${it.id}" }) { album ->
                 val dragging = draggedId == album.id
@@ -209,7 +271,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                     Modifier.onGloballyPositioned { albumBounds[album.id] = it.boundsInRoot() }.pointerInput(album.id, rootAlbums.size, ui.folders.size) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { point -> draggedId = album.id; dragX = 0f; dragY = 0f; dragPointer = (albumBounds[album.id]?.topLeft ?: Offset.Zero) + point; haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
-                                onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null },
+                                onDragCancel = { draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null; resetHover() },
                                 onDragEnd = {
                                     val from = rootAlbums.indexOfFirst { it.id == album.id }
                                     val rowPx = with(density) { 82.dp.toPx() }
@@ -227,14 +289,14 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                         rootAlbums.add(targetRoot, rootAlbums.removeAt(from))
                                         viewModel.reorderAlbums(rootAlbums.map { it.id })
                                     }
-                                    draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null
+                                    draggedId = null; dragX = 0f; dragY = 0f; dragPointer = null; resetHover()
                                 },
                                 onDrag = { change, amount ->
                                     change.consume(); dragX += amount.x; dragY += amount.y
                                     dragPointer = (dragPointer ?: change.position) + amount
                                     val hitAlbum = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
                                     val hitFolder = orderedFolders.firstOrNull { folderBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
-                                    if (hitAlbum == null && hitFolder == null && kotlin.math.abs(dragY) >= with(density) { 76.dp.toPx() }) {
+                                    if (!rootAlbumHover(album, dragPointer, hitAlbum, hitFolder) && hitAlbum == null && hitFolder == null && kotlin.math.abs(dragY) >= with(density) { 76.dp.toPx() }) {
                                         val from = rootAlbums.indexOfFirst { it.id == album.id }
                                         val to = (from + if (dragY > 0) 1 else -1).coerceIn(rootAlbums.indices)
                                         if (from >= 0 && to != from) {
@@ -249,7 +311,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                     viewModel,
                     { openAlbum(album.id) }, { menuTarget = AlbumMenuTarget(album.id, album.name, false) },
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .58f))
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
@@ -272,9 +334,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 
 @Composable private fun SpecialAlbumCard(name: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, open: () -> Unit) {
     ListItem(
-        headlineContent = { Text(name) }, supportingContent = { Text("${count}곡 · 고정 시스템 앨범") },
+        headlineContent = { Text(name, style = MaterialTheme.typography.titleSmall) }, supportingContent = { Text("${count}곡 · 고정 시스템 앨범", style = MaterialTheme.typography.bodySmall) },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
-        modifier = Modifier.clickable(onClick = open),
+        modifier = Modifier.heightIn(min = 58.dp).clickable(onClick = open),
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
     )
 }
@@ -333,10 +395,10 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 
 @Composable private fun FolderCard(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier, click: () -> Unit, more: () -> Unit) {
     Surface(modifier.fillMaxWidth().clickable(onClick = click), shape = RoundedCornerShape(20.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            FolderArtworkGrid(folder, members, viewModel = viewModel, modifier = Modifier.size(58.dp))
-            Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                Text(folder.name, style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FolderArtworkGrid(folder, members, viewModel = viewModel, modifier = Modifier.size(52.dp))
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(folder.name, style = MaterialTheme.typography.titleSmall)
                 Text("${members.size}개 앨범 · ${members.take(3).joinToString(" · ") { it.name }}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
             }
             IconButton(more) { Icon(Icons.Default.MoreVert, "폴더 더보기") }

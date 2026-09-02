@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,7 +38,7 @@ fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () ->
     var reportTarget by remember { mutableStateOf<LyricsSearchResult?>(null) }
     val community by viewModel.communityAction.collectAsStateWithLifecycle()
     LaunchedEffect(track.id) { viewModel.resetLyricsSearch(); viewModel.searchLyrics(title, artist) }
-    Scaffold(topBar = { TopAppBar({ Text("가사 검색") }, navigationIcon = { IconButton(back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } }) }) { padding ->
+    Scaffold(topBar = { TopAppBar({ Text("가사 검색") }, navigationIcon = { IconButton(back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("곡 제목") }, singleLine = true)
             OutlinedTextField(artist, { artist = it }, Modifier.fillMaxWidth().padding(top = 6.dp), label = { Text("아티스트") }, singleLine = true)
@@ -135,7 +136,7 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
             val source = when { importedFromLrc -> LyricsSource.USER_LRC; staged != null -> LyricsSource.USER_SEARCH; else -> LyricsSource.USER_MANUAL }
             viewModel.saveLyrics(trackId, text, synced, source); viewModel.stageLyrics(null); back()
         }
-    }, enabled = text.isNotBlank()) { Text("저장") } }) }) { padding ->
+    }, enabled = text.isNotBlank()) { Text("저장") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (synced.isNotEmpty()) Text("싱크 ${synced.size}줄 유지 중", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary)
             OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().weight(1f).padding(16.dp), placeholder = { Text("가사를 붙여넣거나 직접 입력하세요") })

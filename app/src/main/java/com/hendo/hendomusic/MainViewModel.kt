@@ -118,7 +118,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Continue auto metadata discovery after the local library has been persisted.
         if (result.isSuccess) viewModelScope.launch { container.metadataEnricher.enrichAllMissing() }
         scanState.value = false to result.fold(
-            { "${it.found}곡 검색 · ${it.addedOrUpdated}곡 반영 · ${it.removed}곡 제거" },
+            { scan ->
+                // A no-op start-up scan is invisible. Keep a result only when the library
+                // actually changed (or the scanner encountered a real issue).
+                if (scan.addedOrUpdated == 0 && scan.removed == 0 && scan.errors == 0) null
+                else "${scan.found}곡 검색 · ${scan.addedOrUpdated}곡 반영 · ${scan.removed}곡 제거"
+            },
             { "검색 실패: ${it.localizedMessage}" },
         )
         delay(3_000)
@@ -134,15 +139,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeepScreenOn(value: Boolean) = viewModelScope.launch { container.preferences.setKeepScreenOn(value) }
     fun setTrackListening(value: Boolean) = viewModelScope.launch { container.preferences.setTrackListening(value) }
     fun setCoverLyricsPreview(value: Boolean) = viewModelScope.launch { container.preferences.setCoverLyricsPreview(value) }
+    fun setLastMainTab(value: String) = viewModelScope.launch { container.preferences.setLastMainTab(value) }
+    fun setAlbumGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setAlbumGridMode(value) }
+    fun setAlbumGridColumns(value: Int) = viewModelScope.launch { container.preferences.setAlbumGridColumns(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
     fun deleteSelectedTracks(ids: List<String>) = viewModelScope.launch { ids.forEach(player::removeTrack); dao.deleteTracksCompletely(ids) }
     fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?, done: (String) -> Unit) = viewModelScope.launch {
-        done(runCatching { container.musicRepository.updateMetadata(track, title, artist, album, albumArtist); "저장했습니다" }.getOrElse { "저장 실패: ${it.localizedMessage}" })
+        done(runCatching {
+            container.musicRepository.updateMetadata(track, title, artist, album, albumArtist)
+            dao.track(track.id)?.let(player::refreshCurrent)
+            "저장했습니다"
+        }.getOrElse { "저장 실패: ${it.localizedMessage}" })
     }
     fun createAlbum(name: String) = viewModelScope.launch { dao.insertAlbum(UserAlbumEntity(name = name, sortOrder = uiState.value.albums.size)) }
     fun createFolder(name: String) = viewModelScope.launch { dao.insertFolder(AlbumFolderEntity(name = name, sortOrder = uiState.value.folders.size)) }
     fun reorderAlbums(ids: List<Long>, folderId: Long? = null) = viewModelScope.launch { dao.reorderAlbums(ids, folderId) }
     fun reorderAlbumTracks(albumId: Long, ids: List<String>) = viewModelScope.launch { dao.reorderAlbumTracks(albumId, ids) }
+    fun removeFromAlbum(albumId: Long, trackIds: List<String>) = viewModelScope.launch { dao.removeAlbumTracks(albumId, trackIds) }
     fun reorderFolders(ids: List<Long>) = viewModelScope.launch { dao.reorderFolders(ids) }
     fun createFolderFromAlbums(name: String, firstId: Long, secondId: Long) = viewModelScope.launch {
         dao.createFolderWithAlbums(name, listOf(firstId, secondId), uiState.value.folders.size)
@@ -344,6 +357,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun setArtwork(trackId: String, uri: String?) = viewModelScope.launch {
         dao.updateCustomArtwork(trackId, uri, uri?.let { ArtworkSource.USER.name }, System.currentTimeMillis())
+        dao.track(trackId)?.let(player::refreshCurrent)
     }
     fun searchArtwork(query: String) = viewModelScope.launch {
         mutableArtworkSearch.value = ArtworkSearchState.Loading
@@ -360,6 +374,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val track = dao.track(trackId) ?: error("곡을 찾을 수 없습니다.")
             container.musicRepository.updateArtwork(track, cropped.toString())
             dao.updateCustomArtwork(trackId, cropped.toString(), ArtworkSource.USER.name, System.currentTimeMillis())
+            dao.track(trackId)?.let(player::refreshCurrent)
             cropped
         }
         done(result)

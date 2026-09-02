@@ -8,6 +8,7 @@ import android.os.Build
 import android.widget.RemoteViews
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -43,6 +44,7 @@ import java.util.Locale
 class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaSession
+    private lateinit var notificationProvider: HendoNotificationProvider
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao by lazy { (application as LuminaraApplication).container.database.dao() }
     private val handler = Handler(Looper.getMainLooper())
@@ -57,6 +59,14 @@ class PlaybackService : MediaSessionService() {
         override fun run() {
             if (::player.isInitialized) updatePlaybackStats()
             handler.postDelayed(this, 1_000)
+        }
+    }
+    /** RemoteViews progress bars are snapshots. Refresh only while playing; player event
+     * callbacks below perform immediate refreshes for pause, seek and track changes. */
+    private val notificationProgressTicker = object : Runnable {
+        override fun run() {
+            if (::player.isInitialized && player.isPlaying) notificationProvider.refresh(session)
+            handler.postDelayed(this, 1_000L)
         }
     }
     private var loopRange: LoopRange? = null
@@ -81,7 +91,10 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
         session = MediaSession.Builder(this, player).setCallback(sessionCallback).build()
-        setMediaNotificationProvider(HendoNotificationProvider(this))
+        // Keep the HendoMusic RemoteViews player design. Unlike system MediaStyle, RemoteViews
+        // progress is a snapshot, so notificationProgressTicker refreshes it only while playing.
+        notificationProvider = HendoNotificationProvider(this)
+        setMediaNotificationProvider(notificationProvider)
         player.addListener(object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (loopSeekPending) { loopSeekPending = false; return }
@@ -95,11 +108,17 @@ class PlaybackService : MediaSessionService() {
                         Player.EVENT_REPEAT_MODE_CHANGED, Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
                         Player.EVENT_POSITION_DISCONTINUITY,
                     )) scope.launch { persist() }
+                if (events.containsAny(
+                        Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_IS_PLAYING_CHANGED,
+                        Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
+                        Player.EVENT_POSITION_DISCONTINUITY,
+                    )) handler.post { notificationProvider.refresh(session) }
             }
         })
         scope.launch { restore() }
         handler.post(periodicSave)
         handler.post(statsTicker)
+        handler.post(notificationProgressTicker)
         handler.post(loopTicker)
     }
 
@@ -132,9 +151,20 @@ class PlaybackService : MediaSessionService() {
                 }
                 COMMAND_PLAY_NEXT, COMMAND_APPEND -> Unit
                 COMMAND_TOGGLE_FAVORITE -> {
-                    player.currentMediaItem?.mediaMetadata?.extras?.getString(KEY_TRACK_ID)?.let { id ->
+                    player.currentMediaItem?.let { current -> current.mediaMetadata.extras?.getString(KEY_TRACK_ID)?.let { id ->
                         scope.launch { dao.toggleFavorite(id, System.currentTimeMillis()) }
-                    }
+                        val extras = android.os.Bundle(current.mediaMetadata.extras ?: android.os.Bundle()).apply {
+                            putBoolean(KEY_FAVORITE, !getBoolean(KEY_FAVORITE, false))
+                        }
+                        player.replaceMediaItem(player.currentMediaItemIndex, current.buildUpon().setMediaMetadata(current.mediaMetadata.buildUpon().setExtras(extras).build()).build())
+                        // A custom action does not always cause Samsung SystemUI to request a
+                        // fresh RemoteViews bind. Force Media3 to rebuild the card now so the
+                        // filled/outline heart changes in the already-open shade.
+                        // The media item's extras are already updated synchronously above.
+                        // Rebind now instead of posting behind Room/handler work so the heart
+                        // responds as soon as the user taps it in the notification.
+                        notificationProvider.refresh(session)
+                    }}
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_STOP_PLAYBACK -> { player.pause(); player.clearMediaItems(); stopSelf(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
@@ -317,6 +347,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         handler.removeCallbacks(periodicSave)
         handler.removeCallbacks(statsTicker)
+        handler.removeCallbacks(notificationProgressTicker)
         handler.removeCallbacks(loopTicker)
         runBlocking { persist() }
         session.release(); player.release(); scope.cancel(); super.onDestroy()
@@ -324,6 +355,7 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val KEY_TRACK_ID = "track_id"
+        const val KEY_FAVORITE = "favorite"
         const val KEY_PLAY_NEXT = "play_next"
         const val COMMAND_PLAY_NEXT = "com.hendo.hendomusic.PLAY_NEXT"
         const val COMMAND_APPEND = "com.hendo.hendomusic.APPEND"
@@ -345,9 +377,14 @@ class PlaybackService : MediaSessionService() {
 
 @UnstableApi
 private class HendoNotificationProvider(private val appContext: android.content.Context) : MediaNotification.Provider {
+    private var lastMediaButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>? = null
+    private var lastActionFactory: MediaNotification.ActionFactory? = null
+    private var lastCallback: MediaNotification.Provider.Callback? = null
     init {
         if (Build.VERSION.SDK_INT >= 26) {
             val manager = appContext.getSystemService(NotificationManager::class.java)
+            // A playback card should remain in the shade/status area without interrupting the
+            // app every time a restored session posts its first notification.
             manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "HendoMusic 재생", NotificationManager.IMPORTANCE_LOW))
         }
     }
@@ -358,8 +395,13 @@ private class HendoNotificationProvider(private val appContext: android.content.
         actionFactory: MediaNotification.ActionFactory,
         callback: MediaNotification.Provider.Callback,
     ): MediaNotification {
+        lastMediaButtons = mediaButtons
+        lastActionFactory = actionFactory
+        lastCallback = callback
         val player = session.player
-        val metadata = player.mediaMetadata
+        // Player.mediaMetadata is playlist-level metadata and does not carry a track's
+        // favorite bit. The current item's metadata is the source of truth for this card.
+        val metadata = player.currentMediaItem?.mediaMetadata ?: player.mediaMetadata
         val launch = Intent(appContext, com.hendo.hendomusic.MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
         val contentIntent = PendingIntent.getActivity(appContext, 2001, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val previous = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_previous), "이전 곡", Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
@@ -368,18 +410,28 @@ private class HendoNotificationProvider(private val appContext: android.content.
         val favorite = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)
         val close = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel), "재생 종료", PlaybackService.COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)
         val duration = player.duration.takeIf { it > 0 } ?: 0L
+        val favoriteOn = metadata.extras?.getBoolean(PlaybackService.KEY_FAVORITE, false) == true
+        Log.d("HendoNotification", "render position=${player.currentPosition} duration=$duration playing=${player.isPlaying} favorite=$favoriteOn")
         val views = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player).apply {
             setTextViewText(com.hendo.hendomusic.R.id.notification_title, metadata.title ?: "HendoMusic")
             setTextViewText(com.hendo.hendomusic.R.id.notification_artist, metadata.artist ?: "알 수 없는 아티스트")
             setProgressBar(com.hendo.hendomusic.R.id.notification_progress, duration.coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), player.currentPosition.coerceIn(0L, duration).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), false)
             setTextViewText(com.hendo.hendomusic.R.id.notification_elapsed, formatNotificationTime(player.currentPosition))
             setTextViewText(com.hendo.hendomusic.R.id.notification_duration, formatNotificationTime(duration))
-            setImageViewResource(com.hendo.hendomusic.R.id.notification_play_pause, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+            setImageViewResource(com.hendo.hendomusic.R.id.notification_play_pause, if (player.isPlaying) com.hendo.hendomusic.R.drawable.ic_notification_pause else com.hendo.hendomusic.R.drawable.ic_notification_play)
+            setImageViewResource(com.hendo.hendomusic.R.id.notification_favorite, if (favoriteOn) com.hendo.hendomusic.R.drawable.ic_notification_heart else com.hendo.hendomusic.R.drawable.ic_notification_heart_outline)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_previous, previous.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_play_pause, playPause.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close.actionIntent)
+        }
+        val compactViews = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player_compact).apply {
+            setTextViewText(com.hendo.hendomusic.R.id.notification_compact_title, metadata.title ?: "Music")
+            setTextViewText(com.hendo.hendomusic.R.id.notification_compact_artist, metadata.artist ?: "알 수 없는 아티스트")
+            setImageViewResource(com.hendo.hendomusic.R.id.notification_compact_play_pause, if (player.isPlaying) com.hendo.hendomusic.R.drawable.ic_notification_pause else com.hendo.hendomusic.R.drawable.ic_notification_play)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_compact_play_pause, playPause.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_compact_next, next.actionIntent)
         }
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             // Android requires a small icon, but this transparent glyph avoids a second
@@ -391,18 +443,31 @@ private class HendoNotificationProvider(private val appContext: android.content.
             // This also prevents Android's generic clear-all from dropping an active session.
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            .setCustomContentView(views)
+            .setCustomContentView(compactViews)
             .setCustomBigContentView(views)
             .build()
         return MediaNotification(NOTIFICATION_ID, notification)
     }
 
+    /** Media3 does not always rebind an unchanged custom RemoteViews notification on One UI.
+     * Rebuild with the original Media3 action factory and explicitly post the same ID. */
+    fun refresh(session: MediaSession) {
+        val buttons = lastMediaButtons ?: return
+        val factory = lastActionFactory ?: return
+        val callback = lastCallback ?: return
+        val rendered = createNotification(session, buttons, factory, callback)
+        appContext.getSystemService(NotificationManager::class.java).notify(rendered.notificationId, rendered.notification)
+    }
+
     override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean = false
 
     private companion object {
-        const val CHANNEL_ID = "hendo_playback"
+        // Channel importance is immutable after creation, so use a new id to move existing
+        // installs away from the previous heads-up/high-priority channel.
+        const val CHANNEL_ID = "hendo_playback_silent_v3"
         const val NOTIFICATION_ID = 1001
     }
 
@@ -413,7 +478,7 @@ private class HendoNotificationProvider(private val appContext: android.content.
 }
 
 private fun com.hendo.hendomusic.data.TrackEntity.toMediaItem(instanceId: String = UUID.randomUUID().toString()): MediaItem {
-    val extras = android.os.Bundle().apply { putString(PlaybackService.KEY_TRACK_ID, id) }
+    val extras = android.os.Bundle().apply { putString(PlaybackService.KEY_TRACK_ID, id); putBoolean(PlaybackService.KEY_FAVORITE, isFavorite) }
     return MediaItem.Builder().setMediaId(instanceId).setUri(uri.toUri()).setMediaMetadata(
         MediaMetadata.Builder().setTitle(title).setArtist(artist).setAlbumTitle(album)
             .setArtworkUri(displayArtworkUri()?.toUri()).setExtras(extras).build()

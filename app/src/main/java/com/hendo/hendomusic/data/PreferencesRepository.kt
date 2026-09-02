@@ -24,6 +24,9 @@ data class AppSettings(
     val keepScreenOn: Boolean = false,
     val trackListening: Boolean = true,
     val coverLyricsPreview: Boolean = true,
+    val lastMainTab: String = "library",
+    val albumGridMode: Boolean = true,
+    val albumGridColumns: Int = 2,
     val treeUris: Set<String> = emptySet(),
 )
 
@@ -42,6 +45,9 @@ class PreferencesRepository(private val context: Context) {
         val keepOn = booleanPreferencesKey("keep_on")
         val trackListening = booleanPreferencesKey("track_listening")
         val coverLyricsPreview = booleanPreferencesKey("cover_lyrics_preview")
+        val lastMainTab = stringPreferencesKey("last_main_tab")
+        val albumGridMode = booleanPreferencesKey("album_grid_mode")
+        val albumGridColumns = intPreferencesKey("album_grid_columns")
         val trees = stringSetPreferencesKey("tree_uris")
     }
     val settings = context.dataStore.data.map { p ->
@@ -51,7 +57,8 @@ class PreferencesRepository(private val context: Context) {
             runCatching { ScanMode.valueOf(p[Keys.scanMode] ?: "MEDIA_STORE") }.getOrDefault(ScanMode.MEDIA_STORE),
             p[Keys.sort] ?: "TITLE", p[Keys.floating] ?: false, p[Keys.lines] ?: 2,
             p[Keys.fontSize] ?: 16, p[Keys.alpha] ?: .72f, p[Keys.x] ?: 24, p[Keys.y] ?: 240,
-            p[Keys.keepOn] ?: false, p[Keys.trackListening] ?: true, p[Keys.coverLyricsPreview] ?: true, p[Keys.trees] ?: emptySet()
+            p[Keys.keepOn] ?: false, p[Keys.trackListening] ?: true, p[Keys.coverLyricsPreview] ?: true,
+            p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet()
         )
     }
     suspend fun completeOnboarding() = context.dataStore.edit { it[Keys.onboarding] = true }
@@ -63,6 +70,9 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setKeepScreenOn(value: Boolean) = context.dataStore.edit { it[Keys.keepOn] = value }
     suspend fun setTrackListening(value: Boolean) = context.dataStore.edit { it[Keys.trackListening] = value }
     suspend fun setCoverLyricsPreview(value: Boolean) = context.dataStore.edit { it[Keys.coverLyricsPreview] = value }
+    suspend fun setLastMainTab(value: String) = context.dataStore.edit { it[Keys.lastMainTab] = value }
+    suspend fun setAlbumGridMode(value: Boolean) = context.dataStore.edit { it[Keys.albumGridMode] = value }
+    suspend fun setAlbumGridColumns(value: Int) = context.dataStore.edit { it[Keys.albumGridColumns] = value.coerceIn(2, 4) }
     suspend fun setOverlayPosition(x: Int, y: Int) = context.dataStore.edit { it[Keys.x] = x; it[Keys.y] = y }
     suspend fun addTree(uri: String) = context.dataStore.edit { it[Keys.trees] = (it[Keys.trees] ?: emptySet()) + uri }
 }
