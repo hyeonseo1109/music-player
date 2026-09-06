@@ -167,7 +167,13 @@ class PlaybackService : MediaSessionService() {
                     }}
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
-                COMMAND_STOP_PLAYBACK -> { player.pause(); player.clearMediaItems(); stopSelf(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
+                COMMAND_STOP_PLAYBACK -> {
+                    player.pause(); player.clearMediaItems()
+                    // Cancel the posted card before stopping so Media3 cannot briefly recreate it.
+                    (this@PlaybackService.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(1001)
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
             }
             val itemBundle = args.getBundle(ARG_MEDIA_ITEM)

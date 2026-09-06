@@ -52,13 +52,14 @@ import kotlin.math.roundToInt
 data class AlbumMenuTarget(val id: Long, val name: String, val folder: Boolean)
 
 @Composable
-fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (Long) -> Unit, openFolder: (Long) -> Unit, openSpecial: (String) -> Unit) {
+fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (Long) -> Unit, openFolder: (Long) -> Unit, openSpecial: (String) -> Unit, addContent: (AlbumMenuTarget) -> Unit = {}) {
     var createAlbum by remember { mutableStateOf(false) }
     var createFolder by remember { mutableStateOf(false) }
     var menuTarget by remember { mutableStateOf<AlbumMenuTarget?>(null) }
     var renameTarget by remember { mutableStateOf<AlbumMenuTarget?>(null) }
     var deleteTarget by remember { mutableStateOf<AlbumMenuTarget?>(null) }
     var pendingPair by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var mergeCandidate by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     val gridMode = ui.settings.albumGridMode
     var columnsOpen by remember { mutableStateOf(false) }
     val rootAlbums = remember { mutableStateListOf<UserAlbumEntity>() }
@@ -92,18 +93,20 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
         val target = targetAlbum?.let { "album:${it.id}" } ?: targetFolder?.let { "folder:${it.id}" } ?: run { resetHover(); return false }
         val bounds = targetAlbum?.let { albumBounds[it.id] } ?: targetFolder?.let { folderBounds[it.id] } ?: return false
         val p = pointer ?: return false
-        val center = p.x in (bounds.left + bounds.width * .24f)..(bounds.right - bounds.width * .24f) && p.y in (bounds.top + bounds.height * .24f)..(bounds.bottom - bounds.height * .24f)
+        // A merge requires an intentionally precise central hold; edge overlap remains reorder.
+        val center = p.x in (bounds.left + bounds.width * .35f)..(bounds.right - bounds.width * .35f) && p.y in (bounds.top + bounds.height * .35f)..(bounds.bottom - bounds.height * .35f)
         val kind = if (center) "merge" else "reorder"
         if (target != hoverKey || kind != hoverKind) {
             hoverKey = target; hoverKind = kind; hoverSinceMs = SystemClock.uptimeMillis(); hoverActionApplied = null
             return true
         }
         val action = "$target:$kind"
-        if (hoverActionApplied == action || SystemClock.uptimeMillis() - hoverSinceMs < 200L) return true
+        val dwellMs = if (kind == "merge") 700L else 200L
+        if (hoverActionApplied == action || SystemClock.uptimeMillis() - hoverSinceMs < dwellMs) return true
         hoverActionApplied = action
         when {
             kind == "merge" && targetFolder != null -> viewModel.moveAlbumToFolder(album.id, targetFolder.id)
-            kind == "merge" && targetAlbum != null -> pendingPair = album.id to targetAlbum.id
+            kind == "merge" && targetAlbum != null -> mergeCandidate = album.id to targetAlbum.id
             kind == "reorder" && targetAlbum != null -> {
                 val from = rootAlbums.indexOfFirst { it.id == album.id }
                 val targetIndex = rootAlbums.indexOfFirst { it.id == targetAlbum.id }
@@ -155,7 +158,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
         )
         HeaderGradientDivider()
         Box(Modifier.weight(1f)) {
-        if (gridMode) LazyVerticalGrid(columns = GridCells.Fixed(ui.settings.albumGridColumns), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (gridMode) LazyVerticalGrid(columns = GridCells.Fixed(ui.settings.albumGridColumns), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("좋아요한 곡", ui.tracks.count { it.isFavorite }, Icons.Default.Favorite) { openSpecial("favorites") } }
             if (ui.settings.trackListening) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SpecialAlbumCard("많이 들은 곡", ui.tracks.count { it.playCount > 0 }, Icons.Default.AutoGraph) { openSpecial("most-played") } }
             items(orderedFolders, key = { "folder:${it.id}" }) { folder ->
@@ -238,9 +241,6 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                             if (folderTarget != null) {
                                 // Grid mode supports the same album → folder drop as list mode.
                                 viewModel.moveAlbumToFolder(album.id, folderTarget.id)
-                            } else if (albumTarget != null) {
-                                // Dropping an album onto another tile creates a named folder, matching list mode.
-                                pendingPair = album.id to albumTarget.id
                             } else if (from >= 0 && target != from) {
                                 rootAlbums.add(target, rootAlbums.removeAt(from)); viewModel.reorderAlbums(rootAlbums.map { it.id })
                             }
@@ -283,8 +283,6 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
                                     val albumTarget = rootAlbums.firstOrNull { it.id != album.id && albumBounds[it.id]?.contains(dragPointer ?: Offset.Unspecified) == true }
                                     if (folderTarget != null) {
                                         viewModel.moveAlbumToFolder(album.id, folderTarget.id)
-                                    } else if (albumTarget != null) {
-                                        pendingPair = album.id to albumTarget.id
                                     } else if (from >= 0 && targetRoot != from) {
                                         rootAlbums.add(targetRoot, rootAlbums.removeAt(from))
                                         viewModel.reorderAlbums(rootAlbums.map { it.id })
@@ -320,6 +318,15 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 
     if (createAlbum) AlbumNameDialog("새 앨범") { name -> name?.let(viewModel::createAlbum); createAlbum = false }
     if (createFolder) AlbumNameDialog("새 앨범 폴더") { name -> name?.let(viewModel::createFolder); createFolder = false }
+    mergeCandidate?.let { pair ->
+        AlertDialog(
+            onDismissRequest = { mergeCandidate = null },
+            title = { Text("앨범을 합칠까요?") },
+            text = { Text("두 앨범으로 새 폴더를 만듭니다.") },
+            confirmButton = { TextButton({ pendingPair = pair; mergeCandidate = null }) { Text("합치기") } },
+            dismissButton = { TextButton({ mergeCandidate = null }) { Text("취소") } },
+        )
+    }
     pendingPair?.let { pair ->
         AlbumNameDialog("새 폴더 이름", "새 폴더") { name -> name?.let { viewModel.createFolderFromAlbums(it, pair.first, pair.second) }; pendingPair = null }
     }
@@ -327,7 +334,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
         if (target.folder) viewModel.setFolderArtwork(target.id, null) else viewModel.setAlbumArtwork(target.id, null); menuTarget = null
     }, {
         if (target.folder) viewModel.setFolderArtwork(target.id, "") else viewModel.setAlbumArtwork(target.id, ""); menuTarget = null
-    }, { deleteTarget = target; menuTarget = null }) }
+    }, { deleteTarget = target; menuTarget = null }, { menuTarget = null; addContent(target) }) }
     renameTarget?.let { target -> AlbumNameDialog(if (target.folder) "폴더 이름 변경" else "앨범 이름 변경", target.name) { name -> if (name != null) { if (target.folder) viewModel.renameFolder(target.id, name) else viewModel.renameAlbum(target.id, name) }; renameTarget = null } }
     deleteTarget?.let { target -> AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("${if (target.folder) "폴더" else "앨범"}을 삭제할까요?") }, text = { Text(if (target.folder) "폴더 안 앨범은 유지되고 내 앨범 최상위로 이동합니다." else "앨범과 앨범 안 곡 목록만 삭제합니다. 음원 파일은 삭제하지 않습니다.") }, confirmButton = { TextButton({ if (target.folder) viewModel.dissolveFolder(target.id) else viewModel.deleteAlbum(target.id); deleteTarget = null }) { Text("삭제") } }, dismissButton = { TextButton({ deleteTarget = null }) { Text("취소") } }) }
 }
@@ -344,9 +351,9 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 @Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier, dragModifier: Modifier = Modifier, viewModel: MainViewModel, open: () -> Unit, more: () -> Unit) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     Surface(modifier.fillMaxWidth().then(dragModifier).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AlbumArtworkThumbnail(album, viewModel, Modifier.size(58.dp))
-            Column(Modifier.weight(1f).padding(start = 10.dp)) { Text(album.name, style = MaterialTheme.typography.titleMedium); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall) }
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            AlbumArtworkThumbnail(album, viewModel, Modifier.size(52.dp))
+            Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(album.name, style = MaterialTheme.typography.titleMedium); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall) }
             IconButton(more) { Icon(Icons.Default.MoreVert, "앨범 더보기") }
         }
     }
@@ -355,7 +362,7 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 @Composable private fun AlbumTile(album: UserAlbumEntity, viewModel: MainViewModel, dragModifier: Modifier = Modifier, open: () -> Unit, more: () -> Unit) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     Surface(Modifier.fillMaxWidth().then(dragModifier).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Column(Modifier.padding(10.dp)) {
+        Column(Modifier.padding(6.dp)) {
             AlbumArtworkThumbnail(album, viewModel, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f))
             Row(verticalAlignment = Alignment.CenterVertically) { Text(album.name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.titleSmall); IconButton(more, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "앨범 더보기") } }; Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall)
         }
@@ -366,14 +373,23 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     val artwork = album.artworkUri ?: tracks.firstOrNull()?.displayArtworkUri()
     if (artwork.isNullOrBlank()) {
         Box(modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0xFF62626A)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.MusicNote, "앨범 커버 없음", tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(34.dp))
+            Icon(Icons.Default.MusicNote, "앨범 커버 없음", tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(24.dp))
         }
     } else AsyncImage(artwork, null, modifier.clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
 }
 
 @Composable private fun FolderTile(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, dragModifier: Modifier = Modifier, click: () -> Unit, more: () -> Unit) {
     Surface(Modifier.fillMaxWidth().then(dragModifier).clickable(onClick = click), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
-        Column(Modifier.padding(12.dp)) { FolderArtworkGrid(folder, members, viewModel, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f)); Spacer(Modifier.height(8.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Text(folder.name, Modifier.weight(1f), maxLines = 1); IconButton(more, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "폴더 더보기") } }; Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall) }
+        // Keep the folder tile's outer and artwork constraints identical to AlbumTile.
+        // Different outer padding made a folder cover visibly smaller in the same grid cell.
+        Column(Modifier.padding(6.dp)) {
+            FolderArtworkGrid(folder, members, viewModel, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(folder.name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.titleSmall)
+                IconButton(more, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "폴더 더보기") }
+            }
+            Text("${members.size}개 앨범", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 @Composable private fun FolderArtworkGrid(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier) {
@@ -399,16 +415,17 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
             FolderArtworkGrid(folder, members, viewModel = viewModel, modifier = Modifier.size(52.dp))
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text(folder.name, style = MaterialTheme.typography.titleSmall)
-                Text("${members.size}개 앨범 · ${members.take(3).joinToString(" · ") { it.name }}", maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                Text("${members.size}개 앨범", maxLines = 1, style = MaterialTheme.typography.bodySmall)
             }
             IconButton(more) { Icon(Icons.Default.MoreVert, "폴더 더보기") }
         }
     }
 }
 
-@Composable fun AlbumMenuSheet(target: AlbumMenuTarget, close: () -> Unit, rename: () -> Unit, chooseArtwork: () -> Unit, resetArtwork: () -> Unit, clearArtwork: () -> Unit, delete: () -> Unit) {
+@Composable fun AlbumMenuSheet(target: AlbumMenuTarget, close: () -> Unit, rename: () -> Unit, chooseArtwork: () -> Unit, resetArtwork: () -> Unit, clearArtwork: () -> Unit, delete: () -> Unit, addContent: () -> Unit = {}) {
     ModalBottomSheet(onDismissRequest = close) {
         Text(target.name, Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+        ListItem({ Text(if (target.folder) "앨범 추가하기" else "곡 추가하기") }, leadingContent = { Icon(Icons.Default.Add, null) }, modifier = Modifier.clickable { addContent() })
         ListItem({ Text("이름 변경") }, leadingContent = { Icon(Icons.Default.Edit, null) }, modifier = Modifier.clickable { rename() })
         ListItem({ Text("갤러리에서 썸네일 선택") }, supportingContent = { Text("직접 고른 이미지를 사용합니다") }, leadingContent = { Icon(Icons.Default.PhotoLibrary, null) }, modifier = Modifier.clickable { chooseArtwork() })
         ListItem({ Text("썸네일 초기화") }, supportingContent = { Text(if (target.folder) "앨범 커버 콜라주로 돌아갑니다" else "첫 번째 곡 커버로 돌아갑니다") }, leadingContent = { Icon(Icons.Default.Refresh, null) }, modifier = Modifier.clickable { resetArtwork() })

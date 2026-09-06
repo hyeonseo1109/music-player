@@ -27,6 +27,8 @@ data class AppSettings(
     val lastMainTab: String = "library",
     val albumGridMode: Boolean = true,
     val albumGridColumns: Int = 2,
+    val folderGridMode: Boolean = true,
+    val folderGridColumns: Int = 2,
     val treeUris: Set<String> = emptySet(),
 )
 
@@ -48,6 +50,8 @@ class PreferencesRepository(private val context: Context) {
         val lastMainTab = stringPreferencesKey("last_main_tab")
         val albumGridMode = booleanPreferencesKey("album_grid_mode")
         val albumGridColumns = intPreferencesKey("album_grid_columns")
+        val folderGridMode = booleanPreferencesKey("folder_grid_mode")
+        val folderGridColumns = intPreferencesKey("folder_grid_columns")
         val trees = stringSetPreferencesKey("tree_uris")
     }
     val settings = context.dataStore.data.map { p ->
@@ -58,7 +62,7 @@ class PreferencesRepository(private val context: Context) {
             p[Keys.sort] ?: "TITLE", p[Keys.floating] ?: false, p[Keys.lines] ?: 2,
             p[Keys.fontSize] ?: 16, p[Keys.alpha] ?: .72f, p[Keys.x] ?: 24, p[Keys.y] ?: 240,
             p[Keys.keepOn] ?: false, p[Keys.trackListening] ?: true, p[Keys.coverLyricsPreview] ?: true,
-            p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet()
+            p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.folderGridMode] ?: true, (p[Keys.folderGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet()
         )
     }
     suspend fun completeOnboarding() = context.dataStore.edit { it[Keys.onboarding] = true }
@@ -73,6 +77,8 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setLastMainTab(value: String) = context.dataStore.edit { it[Keys.lastMainTab] = value }
     suspend fun setAlbumGridMode(value: Boolean) = context.dataStore.edit { it[Keys.albumGridMode] = value }
     suspend fun setAlbumGridColumns(value: Int) = context.dataStore.edit { it[Keys.albumGridColumns] = value.coerceIn(2, 4) }
+    suspend fun setFolderGridMode(value: Boolean) = context.dataStore.edit { it[Keys.folderGridMode] = value }
+    suspend fun setFolderGridColumns(value: Int) = context.dataStore.edit { it[Keys.folderGridColumns] = value.coerceIn(2, 4) }
     suspend fun setOverlayPosition(x: Int, y: Int) = context.dataStore.edit { it[Keys.x] = x; it[Keys.y] = y }
     suspend fun addTree(uri: String) = context.dataStore.edit { it[Keys.trees] = (it[Keys.trees] ?: emptySet()) + uri }
 }

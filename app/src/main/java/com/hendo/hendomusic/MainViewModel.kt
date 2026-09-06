@@ -142,6 +142,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLastMainTab(value: String) = viewModelScope.launch { container.preferences.setLastMainTab(value) }
     fun setAlbumGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setAlbumGridMode(value) }
     fun setAlbumGridColumns(value: Int) = viewModelScope.launch { container.preferences.setAlbumGridColumns(value) }
+    fun setFolderGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setFolderGridMode(value) }
+    fun setFolderGridColumns(value: Int) = viewModelScope.launch { container.preferences.setFolderGridColumns(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
     fun deleteSelectedTracks(ids: List<String>) = viewModelScope.launch { ids.forEach(player::removeTrack); dao.deleteTracksCompletely(ids) }
     fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?, done: (String) -> Unit) = viewModelScope.launch {
