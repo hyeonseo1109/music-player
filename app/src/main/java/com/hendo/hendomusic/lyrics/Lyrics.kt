@@ -4,6 +4,13 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
+/** Builds a complete, ordered sync result. Missing or backwards timestamps are rejected. */
+fun buildSyncedLyrics(trackId: String, lines: List<String>, stamps: Map<Int, Long>): List<SyncedLyricLine>? {
+    if (lines.isEmpty() || !lines.indices.all(stamps::containsKey)) return null
+    val result = lines.mapIndexed { index, text -> SyncedLyricLine("$trackId:$index", stamps.getValue(index), text) }
+    return result.takeIf { synced -> synced.zipWithNext().all { (previous, next) -> previous.startTimeMs <= next.startTimeMs } }
+}
+
 sealed interface LyricsSearchState {
     data object Idle : LyricsSearchState
     data object Loading : LyricsSearchState

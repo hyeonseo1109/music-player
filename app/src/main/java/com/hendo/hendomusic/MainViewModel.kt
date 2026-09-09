@@ -272,11 +272,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         player.play(track, library)
         container.metadataEnricher.enrichTrack(track)
     }
-    fun saveLyrics(trackId: String, text: String, synced: List<SyncedLyricLine>, source: LyricsSource = LyricsSource.USER_MANUAL) = viewModelScope.launch {
+    fun saveLyrics(
+        trackId: String,
+        text: String,
+        synced: List<SyncedLyricLine>,
+        source: LyricsSource = LyricsSource.USER_MANUAL,
+        done: () -> Unit = {},
+    ) = viewModelScope.launch {
         dao.replaceLyrics(
             LyricsEntity(trackId = trackId, source = source.name, plainText = text),
             synced.mapIndexed { i, l -> LyricLineEntity(lyricsId = 0, lineIndex = i, startTimeMs = l.startTimeMs, text = l.text) },
         )
+        done()
     }
     fun importLrc(text: String) = LrcCodec.parse(text)
     fun importLrcUri(uri: Uri) = viewModelScope.launch {

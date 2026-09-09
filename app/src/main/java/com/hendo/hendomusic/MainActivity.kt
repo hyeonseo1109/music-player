@@ -33,6 +33,8 @@ class MainActivity : ComponentActivity() {
     private data class PendingArtwork(val track: TrackEntity, val apply: () -> Unit, val fail: (String) -> Unit)
     private data class PendingDelete(val tracks: List<TrackEntity>)
     private val viewModel: MainViewModel by viewModels()
+    private var pendingMetadataRequest: PendingMetadata? = null
+    private var pendingArtworkRequest: PendingArtwork? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -48,8 +50,6 @@ class MainActivity : ComponentActivity() {
                 onDispose { window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             }
             var pendingDelete by remember { mutableStateOf<PendingDelete?>(null) }
-            var pendingMetadata by remember { mutableStateOf<PendingMetadata?>(null) }
-            var pendingArtwork by remember { mutableStateOf<PendingArtwork?>(null) }
             val deleteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                 val tracks = pendingDelete?.tracks.orEmpty()
                 if (result.resultCode == Activity.RESULT_OK && tracks.isNotEmpty()) {
@@ -59,20 +59,20 @@ class MainActivity : ComponentActivity() {
                 pendingDelete = null
             }
             val writeApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-                val pending = pendingMetadata
+                val pending = pendingMetadataRequest
+                pendingMetadataRequest = null
                 if (pending != null) {
                     if (result.resultCode == Activity.RESULT_OK) viewModel.updateMetadata(
                         pending.track, pending.update.title, pending.update.artist, pending.update.album, pending.update.albumArtist, pending.done,
                     ) else pending.done("사용자가 파일 변경 승인을 취소했습니다")
                 }
-                pendingMetadata = null
             }
             val artworkWriteApproval = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-                pendingArtwork?.let { pending ->
+                pendingArtworkRequest?.let { pending ->
                     if (result.resultCode == Activity.RESULT_OK) pending.apply()
                     else pending.fail("사용자가 파일 커버 변경 승인을 취소했습니다")
                 }
-                pendingArtwork = null
+                pendingArtworkRequest = null
             }
             val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
                 uri?.let {
@@ -157,9 +157,14 @@ class MainActivity : ComponentActivity() {
                         if (track.mediaStoreId == null) {
                             done("이 SAF 문서 공급자는 표준 음악 태그 쓰기를 지원하지 않습니다")
                         } else if (Build.VERSION.SDK_INT >= 30) {
-                            pendingMetadata = PendingMetadata(track, update, done)
-                            val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
-                            writeApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                            pendingMetadataRequest = PendingMetadata(track, update, done)
+                            runCatching {
+                                val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
+                                writeApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                            }.onFailure { failure ->
+                                pendingMetadataRequest = null
+                                done(failure.message ?: "파일 변경 승인 화면을 열 수 없습니다")
+                            }
                         } else {
                             viewModel.updateMetadata(track, update.title, update.artist, update.album, update.albumArtist, done)
                         }
@@ -168,9 +173,14 @@ class MainActivity : ComponentActivity() {
                         if (track.mediaStoreId == null) {
                             fail("이 SAF 문서 공급자는 원본 앨범 커버 쓰기를 지원하지 않습니다")
                         } else if (Build.VERSION.SDK_INT >= 30) {
-                            pendingArtwork = PendingArtwork(track, apply, fail)
-                            val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
-                            artworkWriteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                            pendingArtworkRequest = PendingArtwork(track, apply, fail)
+                            runCatching {
+                                val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
+                                artworkWriteApproval.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                            }.onFailure { failure ->
+                                pendingArtworkRequest = null
+                                fail(failure.message ?: "파일 커버 변경 승인 화면을 열 수 없습니다")
+                            }
                         } else {
                             apply()
                         }

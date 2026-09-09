@@ -26,6 +26,7 @@ import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.lyrics.LyricsSearchResult
 import com.hendo.hendomusic.lyrics.LyricsSearchState
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
+import com.hendo.hendomusic.lyrics.buildSyncedLyrics
 import com.hendo.hendomusic.playback.PlaybackState
 import com.hendo.hendomusic.network.CommunityActionState
 
@@ -179,7 +180,13 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
 }
 
 @Composable
-fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainViewModel, back: () -> Unit) {
+fun LyricsSyncScreen(
+    trackId: String,
+    playback: PlaybackState,
+    viewModel: MainViewModel,
+    back: () -> Unit,
+    saved: () -> Unit,
+) {
     val staged by viewModel.stagedLyrics.collectAsStateWithLifecycle()
     var lines by remember { mutableStateOf<List<String>>(emptyList()) }
     var stamps by remember { mutableStateOf<Map<Int, Long>>(emptyMap()) }
@@ -192,7 +199,7 @@ fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainVi
         if (!loaded) {
             val existing = if (staged != null) staged!!.plainText to staged!!.syncedText?.let(LrcCodec::parse).orEmpty() else viewModel.lyrics(trackId)
             lines = existing.first.lines().filter { it.isNotBlank() }
-            stamps = existing.second.mapIndexed { i, line -> i to line.startTimeMs }.toMap(); loaded = true
+            stamps = existing.second.take(lines.size).mapIndexed { i, line -> i to line.startTimeMs }.toMap(); loaded = true
             // Manual syncing always starts with a predictable zero-based playback position.
             viewModel.startSyncPlayback(trackId)
         }
@@ -203,18 +210,48 @@ fun LyricsSyncScreen(trackId: String, playback: PlaybackState, viewModel: MainVi
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton(::leave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") }; Text("가사 싱크 편집", style = MaterialTheme.typography.titleLarge) }
         Text("${formatLyricsTime(playback.positionMs)} / ${formatLyricsTime(playback.durationMs)}", color = MaterialTheme.colorScheme.primary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            lines.subList((index - groupSize).coerceAtLeast(0), index).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (index - groupSize).coerceAtLeast(0) }) }
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(vertical = 14.dp)) { Text(lines.subList(index.coerceAtMost(lines.size), (index + groupSize).coerceAtMost(lines.size)).joinToString("\n"), Modifier.padding(22.dp), style = MaterialTheme.typography.titleLarge) }
-            stamps[index]?.let { Text("지정 ${formatLyricsTime(it)}", color = MaterialTheme.colorScheme.primary) }
-            lines.subList((index + groupSize).coerceAtMost(lines.size), (index + groupSize * 2).coerceAtMost(lines.size)).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (index + groupSize).coerceAtMost(lines.lastIndex) }) }
+            val currentStart = index.coerceIn(0, lines.size)
+            val currentEnd = (currentStart + groupSize).coerceAtMost(lines.size)
+            lines.subList((currentStart - groupSize).coerceAtLeast(0), currentStart).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (currentStart - groupSize).coerceAtLeast(0) }) }
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(vertical = 14.dp)) {
+                Text(
+                    if (currentStart == lines.size) "모든 줄의 싱크를 지정했습니다." else lines.subList(currentStart, currentEnd).joinToString("\n"),
+                    Modifier.padding(22.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            if (currentStart < lines.size) stamps[currentStart]?.let { Text("지정 ${formatLyricsTime(it)}", color = MaterialTheme.colorScheme.primary) }
+            lines.subList(currentEnd, (currentEnd + groupSize).coerceAtMost(lines.size)).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = currentEnd }) }
         }
         // 싱크는 현재 재생 위치에만 기록한다. ±초 미세 조절은 제공하지 않는다.
         FilledIconButton(viewModel.player::toggle) {
             Icon(if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "재생/일시정지")
         }
         Row(verticalAlignment = Alignment.CenterVertically) { Text("한 번에"); (1..3).forEach { count -> FilterChip(groupSize == count, { groupSize = count }, { Text("${count}줄") }, Modifier.padding(start = 4.dp)) } }
-        Row(verticalAlignment = Alignment.CenterVertically) { OutlinedButton({ index = (index - groupSize).coerceAtLeast(0) }) { Text("이전") }; Button({ if (lines.isNotEmpty()) { val targets = index until (index + groupSize).coerceAtMost(lines.size); stamps = stamps + targets.associateWith { playback.positionMs }; dirty = true; index = (index + groupSize).coerceAtMost(lines.lastIndex) } }, Modifier.padding(horizontal = 8.dp)) { Text("${groupSize}줄 싱크") }; OutlinedButton({ index = (index + groupSize).coerceAtMost(lines.lastIndex.coerceAtLeast(0)) }) { Text("다음") } }
-        Button({ val result = lines.mapIndexed { i, text -> SyncedLyricLine("$trackId:$i", stamps[i] ?: 0, text) }; viewModel.saveLyrics(trackId, lines.joinToString("\n"), result, if (staged != null) LyricsSource.USER_SEARCH else LyricsSource.USER_MANUAL); viewModel.stageLyrics(null); back() }, enabled = lines.isNotEmpty() && stamps.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton({ index = (index - groupSize).coerceAtLeast(0) }) { Text("이전") }
+            Button({
+                if (lines.isNotEmpty() && index < lines.size) {
+                    val targets = index until (index + groupSize).coerceAtMost(lines.size)
+                    stamps = stamps + targets.associateWith { playback.positionMs.coerceAtLeast(0) }
+                    dirty = true
+                    index = (index + groupSize).coerceAtMost(lines.size)
+                }
+            }, Modifier.padding(horizontal = 8.dp), enabled = index < lines.size) { Text("${groupSize}줄 싱크") }
+            OutlinedButton({ index = (index + groupSize).coerceAtMost(lines.size) }) { Text("다음") }
+        }
+        val completedSync = buildSyncedLyrics(trackId, lines, stamps)
+        Button({
+            completedSync?.let { result ->
+                viewModel.saveLyrics(trackId, lines.joinToString("\n"), result, if (staged != null) LyricsSource.USER_SEARCH else LyricsSource.USER_MANUAL) {
+                    viewModel.stageLyrics(null)
+                    saved()
+                }
+            }
+        }, enabled = completedSync != null, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
+        if (stamps.isNotEmpty() && !lines.indices.zipWithNext().all { (previous, next) -> (stamps[previous] ?: Long.MIN_VALUE) <= (stamps[next] ?: Long.MAX_VALUE) }) {
+            Text("뒤 줄의 싱크는 앞 줄보다 빠를 수 없습니다.", color = MaterialTheme.colorScheme.error)
+        }
         TextButton(::leave) { Text("취소") }
     }
     if (confirmBack) AlertDialog({ confirmBack = false }, { TextButton({ confirmBack = false; back() }) { Text("나가기") } }, dismissButton = { TextButton({ confirmBack = false }) { Text("계속 편집") } }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") })

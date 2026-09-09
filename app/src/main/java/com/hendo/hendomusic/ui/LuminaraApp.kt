@@ -123,6 +123,17 @@ fun LuminaraApp(
         albumPickerTracks = tracks
         nav.navigate("albumPicker") { launchSingleTop = true }
     }
+    fun returnToPlayerWithoutEditorLoop() {
+        // Prefer the existing player destination so every lyrics/editor entry above it is
+        // removed. If this flow was opened without a player in the stack, create one above
+        // the current main-tab root rather than above the sync destination.
+        if (!nav.popBackStack("player", inclusive = false)) {
+            nav.navigate("player") {
+                popUpTo(nav.graph.startDestinationId) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
     // This observer deliberately does not consume pointer changes.  Scrollable content,
     // the name navigator and album drag/drop therefore retain first claim on gestures;
     // an unconsumed, clearly horizontal swipe on the main surface changes tabs.
@@ -193,6 +204,7 @@ fun LuminaraApp(
                 val tracks by remember(id) { if (id == null) kotlinx.coroutines.flow.flowOf(emptyList()) else viewModel.observeAlbumTracks(id) }.collectAsStateWithLifecycle(emptyList())
                 val localTracks = remember { mutableStateListOf<TrackEntity>() }
                 var selectedIds by remember(id) { mutableStateOf<Set<String>>(emptySet()) }
+                var menuTrack by remember(id) { mutableStateOf<TrackEntity?>(null) }
                 var draggedTrackId by remember { mutableStateOf<String?>(null) }
                 var dragOffset by remember { mutableFloatStateOf(0f) }
                 var pendingTrackOrder by remember(id) { mutableStateOf<List<String>?>(null) }
@@ -273,11 +285,24 @@ fun LuminaraApp(
                                 )
                             }, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.DragHandle, "길게 눌러 순서 변경", Modifier.padding(start = 8.dp))
-                                MusicRow(track, track.id in selectedIds, { if (selectedIds.isEmpty()) { viewModel.play(track, localTracks); nav.navigate("player") } else selectedIds = selectedIds.toggle(track.id) }, { selectedIds = selectedIds.toggle(track.id) }, {})
+                                MusicRow(track, track.id in selectedIds, { if (selectedIds.isEmpty()) { viewModel.play(track, localTracks); nav.navigate("player") } else selectedIds = selectedIds.toggle(track.id) }, { selectedIds = selectedIds.toggle(track.id) }, { menuTrack = track })
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
                         }
                     }
+                }
+                menuTrack?.let { track ->
+                    TrackMenu(
+                        track = track,
+                        vm = viewModel,
+                        nav = nav,
+                        requestDelete = requestDelete,
+                        playQueue = localTracks,
+                        openAlbumPicker = ::openAlbumPicker,
+                        afterPlay = {},
+                        close = { menuTrack = null },
+                        removeFromAlbum = { id?.let { viewModel.removeFromAlbum(it, listOf(track.id)) } },
+                    )
                 }
             }
             composable("folder/{folderId}") { back ->
@@ -382,9 +407,13 @@ fun LuminaraApp(
                 LyricsEditorScreen(trackId, viewModel, chooseLrc, { nav.popBackStack() }) { nav.navigate("sync/$trackId") }
             }
             composable("sync/{trackId}") { back ->
-                LyricsSyncScreen(back.arguments?.getString("trackId").orEmpty(), playback, viewModel) {
-                    nav.navigate("player") { popUpTo("library") { inclusive = false } }
-                }
+                LyricsSyncScreen(
+                    trackId = back.arguments?.getString("trackId").orEmpty(),
+                    playback = playback,
+                    viewModel = viewModel,
+                    back = { nav.popBackStack() },
+                    saved = ::returnToPlayerWithoutEditorLoop,
+                )
             }
             composable("metadata/{trackId}") { back ->
                 MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite, requestArtworkWrite) { nav.popBackStack() }
@@ -551,7 +580,7 @@ private fun AlbumContentPickerScreen(ui: MainUiState, vm: MainViewModel, title: 
             if (ui.settings.sort == "TITLE") NameIndexRail(ui.visibleTracks, listState)
         }
     }
-    menuTrack?.let { TrackMenu(it, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, openAlbumPicker, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }) { menuTrack = null } }
+    menuTrack?.let { TrackMenu(it, vm, nav, requestDelete, selectedTracks.ifEmpty { ui.visibleTracks }, openAlbumPicker, afterPlay = { if (selectedTracks.isNotEmpty()) selectedIds = emptySet() }, close = { menuTrack = null }) }
     if (deleteSelectedConfirm) AlertDialog(onDismissRequest = { deleteSelectedConfirm = false }, title = { Text("선택한 ${selectedTracks.size}곡을 삭제할까요?") }, text = { Text("기기 음악 파일도 삭제됩니다.") }, confirmButton = { TextButton({ requestDeleteMany(selectedTracks); selectedIds = emptySet(); deleteSelectedConfirm = false }) { Text("삭제") } }, dismissButton = { TextButton({ deleteSelectedConfirm = false }) { Text("취소") } })
 }
 
@@ -665,8 +694,9 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     } }, confirmButton = { TextButton(onClick = close) { Text("확인") } })
 }
 
-@Composable private fun TrackMenu(track: TrackEntity, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, openAlbumPicker: (List<TrackEntity>) -> Unit, afterPlay: () -> Unit, close: () -> Unit) {
+@Composable private fun TrackMenu(track: TrackEntity, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, openAlbumPicker: (List<TrackEntity>) -> Unit, afterPlay: () -> Unit, close: () -> Unit, removeFromAlbum: (() -> Unit)? = null) {
     var deleteConfirm by remember { mutableStateOf(false) }
+    var removeConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.displayArtworkUri(), 48) })
         MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, playQueue); afterPlay(); close() }
@@ -676,6 +706,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         MenuLine(Icons.Default.Edit, "곡 정보 수정하기") { close(); nav.navigate("metadata/${track.id}") }
         MenuLine(Icons.Default.Lyrics, "가사 검색") { close(); nav.navigate("lyricsSearch/${track.id}") }
         MenuLine(Icons.Default.EditNote, "가사 직접 입력") { close(); vm.stageLyrics(null); nav.navigate("lyrics/${track.id}") }
+        if (removeFromAlbum != null) MenuLine(Icons.Default.RemoveCircleOutline, "앨범에서 제외") { removeConfirm = true }
         MenuLine(Icons.Default.DeleteOutline, "삭제") { deleteConfirm = true }
     } }
     if (deleteConfirm) AlertDialog(
@@ -683,6 +714,13 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         text = { Text("파일 자체가 삭제되며 다른 음악 앱에서도 사라질 수 있습니다.") },
         confirmButton = { TextButton({ deleteConfirm = false; close(); requestDelete(track) }) { Text("삭제", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton({ deleteConfirm = false }) { Text("취소") } },
+    )
+    if (removeConfirm) AlertDialog(
+        onDismissRequest = { removeConfirm = false },
+        title = { Text("앨범에서 곡을 제외할까요?") },
+        text = { Text("앨범 내에서 해당 곡이 삭제됩니다.") },
+        confirmButton = { TextButton({ removeConfirm = false; removeFromAlbum?.invoke(); close() }) { Text("제외") } },
+        dismissButton = { TextButton({ removeConfirm = false }) { Text("취소") } },
     )
 }
 

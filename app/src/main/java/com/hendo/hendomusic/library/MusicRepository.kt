@@ -120,13 +120,15 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
         withContext(Dispatchers.IO) {
             if (track.fileName.endsWith(".mp3", ignoreCase = true)) {
                 rewriteMp3Tags(track, title, artist, album, albumArtist)
-                verifyEmbeddedMetadata(track.uri, title, artist, album)
+                verifyEmbeddedMetadata(track, title, artist, album)
+                refreshSharedMediaMetadata(track, title, artist, album, albumArtist)
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
             if (track.fileName.endsWith(".m4a", ignoreCase = true) || track.fileName.endsWith(".flac", ignoreCase = true)) {
                 rewriteContainerTags(track, title, artist, album, albumArtist)
-                verifyEmbeddedMetadata(track.uri, title, artist, album)
+                verifyEmbeddedMetadata(track, title, artist, album)
+                refreshSharedMediaMetadata(track, title, artist, album, albumArtist)
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
@@ -245,17 +247,60 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
         }
     }
 
-    /** Do not report success until Android can read the rewritten embedded metadata back. */
-    private fun verifyEmbeddedMetadata(uri: String, title: String, artist: String, album: String) {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(context, Uri.parse(uri))
-            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) == title) { "파일 제목 태그를 다시 읽지 못했습니다." }
-            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) == artist) { "파일 아티스트 태그를 다시 읽지 못했습니다." }
-            check(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) == album) { "파일 앨범 태그를 다시 읽지 못했습니다." }
-        } finally {
-            retriever.release()
+    /**
+     * Verify a fresh byte-for-byte copy with the same tag library that wrote the file.
+     * MediaMetadataRetriever may keep the old MediaStore metadata cached immediately after a
+     * write, which previously produced a false "파일 ... 태그를 다시 읽지 못했습니다" failure.
+     */
+    private fun verifyEmbeddedMetadata(track: TrackEntity, title: String, artist: String, album: String) {
+        val extension = when {
+            track.fileName.endsWith(".mp3", true) -> ".mp3"
+            track.fileName.endsWith(".flac", true) -> ".flac"
+            else -> ".m4a"
         }
+        val copy = copyContentToTemp(track.uri, extension)
+        try {
+            val embedded = if (extension == ".mp3") {
+                val tag = Mp3File(copy.absolutePath).id3v2Tag
+                Triple(tag?.title.orEmpty(), tag?.artist.orEmpty(), tag?.album.orEmpty())
+            } else {
+                val tag = AudioFileIO.read(copy).tag
+                Triple(tag?.getFirst(FieldKey.TITLE).orEmpty(), tag?.getFirst(FieldKey.ARTIST).orEmpty(), tag?.getFirst(FieldKey.ALBUM).orEmpty())
+            }
+            check(embedded.first == title) { "파일 제목 태그를 다시 읽지 못했습니다." }
+            check(embedded.second == artist) { "파일 아티스트 태그를 다시 읽지 못했습니다." }
+            check(embedded.third == album) { "파일 앨범 태그를 다시 읽지 못했습니다." }
+        } finally {
+            copy.delete()
+        }
+    }
+
+    private fun copyContentToTemp(uri: String, extension: String): File {
+        val copy = File.createTempFile("hendo-verify-", extension, context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(uri))?.use { input ->
+                copy.outputStream().use { output -> input.copyTo(output) }
+            } ?: error("수정한 음원 파일을 다시 읽을 수 없습니다.")
+            return copy
+        } catch (failure: Throwable) {
+            copy.delete()
+            throw failure
+        }
+    }
+
+    /** Keep Android's shared media index in step with the successfully verified file tags. */
+    private fun refreshSharedMediaMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
+        if (track.mediaStoreId != null) {
+            runCatching {
+                context.contentResolver.update(Uri.parse(track.uri), ContentValues().apply {
+                    put(MediaStore.Audio.Media.TITLE, title)
+                    put(MediaStore.Audio.Media.ARTIST, artist)
+                    put(MediaStore.Audio.Media.ALBUM, album)
+                    albumArtist?.let { put("album_artist", it) }
+                }, null, null)
+            }
+        }
+        context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
     }
 
     /** Prevent an app-only success state when the file did not retain a readable cover frame. */
