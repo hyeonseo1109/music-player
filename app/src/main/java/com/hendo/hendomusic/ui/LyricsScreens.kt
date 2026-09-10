@@ -249,9 +249,6 @@ fun LyricsSyncScreen(
                 }
             }
         }, enabled = completedSync != null, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
-        if (stamps.isNotEmpty() && !lines.indices.zipWithNext().all { (previous, next) -> (stamps[previous] ?: Long.MIN_VALUE) <= (stamps[next] ?: Long.MAX_VALUE) }) {
-            Text("뒤 줄의 싱크는 앞 줄보다 빠를 수 없습니다.", color = MaterialTheme.colorScheme.error)
-        }
         TextButton(::leave) { Text("취소") }
     }
     if (confirmBack) AlertDialog({ confirmBack = false }, { TextButton({ confirmBack = false; back() }) { Text("나가기") } }, dismissButton = { TextButton({ confirmBack = false }) { Text("계속 편집") } }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") })

@@ -24,7 +24,8 @@ class LyricsTest {
         assertEquals(listOf(4_200L, 4_200L, 4_200L), synced?.map { it.startTimeMs })
         assertEquals(2, LrcCodec.activeIndex(synced.orEmpty(), 4_200L))
     }
-    @Test fun `manual sync rejects timestamps that run backwards`() {
-        assertNull(buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 2_000L, 1 to 1_000L)))
+    @Test fun `complete stamps remain savable after seeking backwards`() {
+        val synced = buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 2_000L, 1 to 1_000L))
+        assertEquals(listOf(2_000L, 1_000L), synced?.map { it.startTimeMs })
     }
 }
