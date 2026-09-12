@@ -240,15 +240,14 @@ fun LyricsSyncScreen(
             }, Modifier.padding(horizontal = 8.dp), enabled = index < lines.size) { Text("${groupSize}줄 싱크") }
             OutlinedButton({ index = (index + groupSize).coerceAtMost(lines.size) }) { Text("다음") }
         }
-        val completedSync = buildSyncedLyrics(trackId, lines, stamps)
         Button({
-            completedSync?.let { result ->
+            buildSyncedLyrics(trackId, lines, stamps)?.let { result ->
                 viewModel.saveLyrics(trackId, lines.joinToString("\n"), result, if (staged != null) LyricsSource.USER_SEARCH else LyricsSource.USER_MANUAL) {
                     viewModel.stageLyrics(null)
                     saved()
                 }
             }
-        }, enabled = completedSync != null, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
+        }, enabled = lines.isNotEmpty() && stamps.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
         TextButton(::leave) { Text("취소") }
     }
     if (confirmBack) AlertDialog({ confirmBack = false }, { TextButton({ confirmBack = false; back() }) { Text("나가기") } }, dismissButton = { TextButton({ confirmBack = false }) { Text("계속 편집") } }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") })

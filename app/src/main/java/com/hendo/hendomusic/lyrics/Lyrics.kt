@@ -4,10 +4,14 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
-/** Builds a sync result only after every lyric line has received a timestamp. */
+/** Builds a savable sync result once syncing has started, repairing any UI-state gaps. */
 fun buildSyncedLyrics(trackId: String, lines: List<String>, stamps: Map<Int, Long>): List<SyncedLyricLine>? {
-    if (lines.isEmpty() || !lines.indices.all(stamps::containsKey)) return null
-    return lines.mapIndexed { index, text -> SyncedLyricLine("$trackId:$index", stamps.getValue(index), text) }
+    if (lines.isEmpty()) return null
+    var previous = lines.indices.firstNotNullOfOrNull { stamps[it] } ?: return null
+    return lines.mapIndexed { index, text ->
+        previous = stamps[index] ?: previous
+        SyncedLyricLine("$trackId:$index", previous, text)
+    }
 }
 
 sealed interface LyricsSearchState {

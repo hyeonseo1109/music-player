@@ -16,8 +16,9 @@ class LyricsTest {
     @Test fun `lrc round trip`() { val lines = LrcCodec.parse("[01:02.34]hello"); assertEquals(lines.single().text, LrcCodec.parse(LrcCodec.encode(lines)).single().text) }
     @Test fun `remote synced lyric becomes editable local copy without losing timestamps`() { val remote = "[00:01.250]first\n[00:03.500]second"; val local = LrcCodec.parse(remote); assertEquals(listOf(1250L,3500L), local.map { it.startTimeMs }); assertEquals(listOf("first","second"), local.map { it.text }) }
     @Test fun `synced lyric edit can explicitly reset structure`() { val original = LrcCodec.parse("[00:01.00]a\n[00:02.00]b"); val edited = "a\nnew\nb"; assertNotEquals(original.map { it.text }, edited.lines().filter { it.isNotBlank() }) }
-    @Test fun `manual sync rejects any unstamped line instead of saving it at zero`() {
-        assertNull(buildSyncedLyrics("track", listOf("one", "two", "three"), mapOf(0 to 1_000L, 1 to 2_000L)))
+    @Test fun `manual sync repairs an unstamped trailing line without resetting it to zero`() {
+        val synced = buildSyncedLyrics("track", listOf("one", "two", "three"), mapOf(0 to 1_000L, 1 to 2_000L))
+        assertEquals(listOf(1_000L, 2_000L, 2_000L), synced?.map { it.startTimeMs })
     }
     @Test fun `manual group sync preserves every assigned timestamp`() {
         val synced = buildSyncedLyrics("track", listOf("original", "pronunciation", "meaning"), mapOf(0 to 4_200L, 1 to 4_200L, 2 to 4_200L))

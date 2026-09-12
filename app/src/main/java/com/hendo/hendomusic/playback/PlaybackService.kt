@@ -45,6 +45,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaSession
     private lateinit var notificationProvider: HendoNotificationProvider
+    private var closeRequested = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao by lazy { (application as LuminaraApplication).container.database.dao() }
     private val handler = Handler(Looper.getMainLooper())
@@ -65,8 +66,8 @@ class PlaybackService : MediaSessionService() {
      * callbacks below perform immediate refreshes for pause, seek and track changes. */
     private val notificationProgressTicker = object : Runnable {
         override fun run() {
-            if (::player.isInitialized && player.isPlaying) notificationProvider.refresh(session)
-            handler.postDelayed(this, 1_000L)
+            if (!closeRequested && ::player.isInitialized && player.isPlaying) notificationProvider.refresh(session)
+            if (!closeRequested) handler.postDelayed(this, 1_000L)
         }
     }
     private var loopRange: LoopRange? = null
@@ -112,7 +113,7 @@ class PlaybackService : MediaSessionService() {
                         Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_IS_PLAYING_CHANGED,
                         Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
                         Player.EVENT_POSITION_DISCONTINUITY,
-                    )) handler.post { notificationProvider.refresh(session) }
+                    )) handler.post { if (!closeRequested) notificationProvider.refresh(session) }
             }
         })
         scope.launch { restore() }
@@ -151,6 +152,7 @@ class PlaybackService : MediaSessionService() {
                 }
                 COMMAND_PLAY_NEXT, COMMAND_APPEND -> Unit
                 COMMAND_TOGGLE_FAVORITE -> {
+                    if (closeRequested) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     player.currentMediaItem?.let { current -> current.mediaMetadata.extras?.getString(KEY_TRACK_ID)?.let { id ->
                         scope.launch { dao.toggleFavorite(id, System.currentTimeMillis()) }
                         val extras = android.os.Bundle(current.mediaMetadata.extras ?: android.os.Bundle()).apply {
@@ -168,10 +170,18 @@ class PlaybackService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_STOP_PLAYBACK -> {
-                    player.pause(); player.clearMediaItems()
-                    // Cancel the posted card before stopping so Media3 cannot briefly recreate it.
-                    (this@PlaybackService.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(1001)
-                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                    if (closeRequested) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    closeRequested = true
+                    handler.removeCallbacks(notificationProgressTicker)
+                    notificationProvider.dismiss()
+                    // Stop foreground notification before player mutations emit another Media3
+                    // event. All explicit refresh paths are guarded by closeRequested above.
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    player.pause()
+                    player.stop()
+                    player.clearMediaItems()
+                    notificationProvider.dismiss()
+                    stopSelf()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
@@ -386,6 +396,7 @@ private class HendoNotificationProvider(private val appContext: android.content.
     private var lastMediaButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>? = null
     private var lastActionFactory: MediaNotification.ActionFactory? = null
     private var lastCallback: MediaNotification.Provider.Callback? = null
+    private var dismissed = false
     init {
         if (Build.VERSION.SDK_INT >= 26) {
             val manager = appContext.getSystemService(NotificationManager::class.java)
@@ -455,17 +466,33 @@ private class HendoNotificationProvider(private val appContext: android.content.
             .setCustomContentView(compactViews)
             .setCustomBigContentView(views)
             .build()
+        if (dismissed) {
+            // Media3 can request one final render after the player is cleared. Cancel after
+            // that framework post as well so a closed card cannot reappear.
+            Handler(Looper.getMainLooper()).post {
+                appContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+            }
+        }
         return MediaNotification(NOTIFICATION_ID, notification)
     }
 
     /** Media3 does not always rebind an unchanged custom RemoteViews notification on One UI.
      * Rebuild with the original Media3 action factory and explicitly post the same ID. */
     fun refresh(session: MediaSession) {
+        if (dismissed) return
         val buttons = lastMediaButtons ?: return
         val factory = lastActionFactory ?: return
         val callback = lastCallback ?: return
         val rendered = createNotification(session, buttons, factory, callback)
         appContext.getSystemService(NotificationManager::class.java).notify(rendered.notificationId, rendered.notification)
+    }
+
+    fun dismiss() {
+        dismissed = true
+        lastMediaButtons = null
+        lastActionFactory = null
+        lastCallback = null
+        appContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
     override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean = false
