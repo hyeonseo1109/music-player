@@ -6,6 +6,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LyricsTest {
+    @Test fun sync_can_be_built_before_the_first_stamp_without_disabling_save() {
+        val synced = buildSyncedLyrics("track", listOf("one", "two"), emptyMap())
+        assertEquals(listOf(0L, 0L), synced!!.map { it.startTimeMs })
+    }
     @Test fun `lrc parses milliseconds and locates active line`() {
         val lines = LrcCodec.parse("[00:12.340]첫 줄\n[00:16.82]둘째 줄")
         assertEquals(12340, lines[0].startTimeMs); assertEquals(0, LrcCodec.activeIndex(lines, 15000)); assertEquals(1, LrcCodec.activeIndex(lines, 17000))

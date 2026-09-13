@@ -4,10 +4,10 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
-/** Builds a savable sync result once syncing has started, repairing any UI-state gaps. */
+/** Builds a savable sync result, repairing any UI-state gaps without blocking the save UI. */
 fun buildSyncedLyrics(trackId: String, lines: List<String>, stamps: Map<Int, Long>): List<SyncedLyricLine>? {
     if (lines.isEmpty()) return null
-    var previous = lines.indices.firstNotNullOfOrNull { stamps[it] } ?: return null
+    var previous = lines.indices.firstNotNullOfOrNull { stamps[it] } ?: 0L
     return lines.mapIndexed { index, text ->
         previous = stamps[index] ?: previous
         SyncedLyricLine("$trackId:$index", previous, text)

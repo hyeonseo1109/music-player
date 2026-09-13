@@ -125,6 +125,27 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_CLOSE_PLAYBACK) {
+            closePlayback()
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun closePlayback() {
+        if (closeRequested) return
+        closeRequested = true
+        handler.removeCallbacks(notificationProgressTicker)
+        notificationProvider.dismiss()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        player.pause()
+        player.stop()
+        player.clearMediaItems()
+        notificationProvider.dismiss()
+        stopSelf()
+    }
+
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -170,18 +191,7 @@ class PlaybackService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_STOP_PLAYBACK -> {
-                    if (closeRequested) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                    closeRequested = true
-                    handler.removeCallbacks(notificationProgressTicker)
-                    notificationProvider.dismiss()
-                    // Stop foreground notification before player mutations emit another Media3
-                    // event. All explicit refresh paths are guarded by closeRequested above.
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    player.pause()
-                    player.stop()
-                    player.clearMediaItems()
-                    notificationProvider.dismiss()
-                    stopSelf()
+                    closePlayback()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 else -> return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_NOT_SUPPORTED))
@@ -380,6 +390,7 @@ class PlaybackService : MediaSessionService() {
         const val COMMAND_SET_LOOP = "com.hendo.hendomusic.SET_LOOP"
         const val COMMAND_CLEAR_LOOP = "com.hendo.hendomusic.CLEAR_LOOP"
         const val COMMAND_STOP_PLAYBACK = "com.hendo.hendomusic.STOP_PLAYBACK"
+        const val ACTION_CLOSE_PLAYBACK = "com.hendo.hendomusic.action.CLOSE_PLAYBACK"
         const val COMMAND_TOGGLE_FAVORITE = "com.hendo.hendomusic.TOGGLE_FAVORITE"
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
@@ -425,7 +436,12 @@ private class HendoNotificationProvider(private val appContext: android.content.
         val playPause = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play), if (player.isPlaying) "일시정지" else "재생", Player.COMMAND_PLAY_PAUSE)
         val next = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_next), "다음 곡", Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
         val favorite = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.btn_star_big_on), "좋아요", PlaybackService.COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)
-        val close = actionFactory.createCustomAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel), "재생 종료", PlaybackService.COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)
+        val close = PendingIntent.getService(
+            appContext,
+            2002,
+            Intent(appContext, PlaybackService::class.java).setAction(PlaybackService.ACTION_CLOSE_PLAYBACK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val duration = player.duration.takeIf { it > 0 } ?: 0L
         val favoriteOn = metadata.extras?.getBoolean(PlaybackService.KEY_FAVORITE, false) == true
         Log.d("HendoNotification", "render position=${player.currentPosition} duration=$duration playing=${player.isPlaying} favorite=$favoriteOn")
@@ -441,7 +457,7 @@ private class HendoNotificationProvider(private val appContext: android.content.
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_play_pause, playPause.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
-            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close.actionIntent)
+            setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close)
         }
         val compactViews = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player_compact).apply {
             setTextViewText(com.hendo.hendomusic.R.id.notification_compact_title, metadata.title ?: "Music")
@@ -476,15 +492,15 @@ private class HendoNotificationProvider(private val appContext: android.content.
         return MediaNotification(NOTIFICATION_ID, notification)
     }
 
-    /** Media3 does not always rebind an unchanged custom RemoteViews notification on One UI.
-     * Rebuild with the original Media3 action factory and explicitly post the same ID. */
+    /** Ask Media3 to post the rebuilt RemoteViews so its foreground-notification state and
+     * Samsung SystemUI stay synchronized with every progress snapshot. */
     fun refresh(session: MediaSession) {
         if (dismissed) return
         val buttons = lastMediaButtons ?: return
         val factory = lastActionFactory ?: return
         val callback = lastCallback ?: return
         val rendered = createNotification(session, buttons, factory, callback)
-        appContext.getSystemService(NotificationManager::class.java).notify(rendered.notificationId, rendered.notification)
+        callback.onNotificationChanged(rendered)
     }
 
     fun dismiss() {
