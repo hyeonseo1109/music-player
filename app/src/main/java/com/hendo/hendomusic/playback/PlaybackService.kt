@@ -135,6 +135,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun closePlayback() {
         if (closeRequested) return
+        Log.d("PlaybackService", "Explicit notification close requested")
         closeRequested = true
         handler.removeCallbacks(notificationProgressTicker)
         notificationProvider.dismiss()
@@ -471,7 +472,8 @@ private class HendoNotificationProvider(private val appContext: android.content.
             // visible app icon in the custom player card.
             .setSmallIcon(com.hendo.hendomusic.R.drawable.ic_notification_status)
             .setContentIntent(contentIntent)
-            .setDeleteIntent(actionFactory.createNotificationDismissalIntent(session))
+            // Clearing/swiping the card must not stop playback. Only the visible X action
+            // above is wired to ACTION_CLOSE_PLAYBACK.
             // Playback notification remains pinned until the explicit close action is used.
             // This also prevents Android's generic clear-all from dropping an active session.
             .setOngoing(true)

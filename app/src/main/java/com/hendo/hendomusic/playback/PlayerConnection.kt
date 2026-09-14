@@ -72,6 +72,22 @@ class PlayerConnection(private val context: Context) {
             setMediaItems(queue.map { it.asMediaItem() }, index, 0); prepare(); play()
         }
     }
+    /** Starts lyric timing without replacing the user's current queue. */
+    fun prepareForSync(track: com.hendo.hendomusic.data.TrackEntity) {
+        clearLoop()
+        controller?.apply {
+            var index = (0 until mediaItemCount).indexOfFirst {
+                getMediaItemAt(it).mediaMetadata.extras?.getString(PlaybackService.KEY_TRACK_ID) == track.id
+            }
+            if (index < 0) {
+                addMediaItem(track.asMediaItem())
+                index = mediaItemCount - 1
+            }
+            seekTo(index, 0)
+            prepare()
+            play()
+        }
+    }
     fun toggle() { controller?.let { player ->
         if (player.isPlaying) player.pause() else {
             if (player.playbackState == Player.STATE_ENDED) player.seekTo(player.currentMediaItemIndex.coerceAtLeast(0), 0)

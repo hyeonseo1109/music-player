@@ -266,7 +266,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resetPlaylistImport() { mutablePlaylistImport.value = PlaylistImportState.Idle }
     fun observeAlbumTracks(albumId: Long) = dao.observeAlbumTracks(albumId)
     fun startSyncPlayback(trackId: String) = viewModelScope.launch {
-        dao.track(trackId)?.let { play(it) }
+        dao.track(trackId)?.let(player::prepareForSync)
     }
     fun play(track: TrackEntity, library: List<TrackEntity> = emptyList()) = viewModelScope.launch {
         player.play(track, library)

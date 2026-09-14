@@ -88,7 +88,10 @@ class FloatingLyricsService : Service() {
             addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(if (controller?.isPlaying == true) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play) { controller?.let { if (it.isPlaying) it.pause() else it.play() }; collapseLater() })
             addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
-            addView(button(android.R.drawable.ic_media_next) { controller?.seekToNextMediaItem() })
+            addView(button(android.R.drawable.ic_media_next) {
+                controller?.seekToNextMediaItem()
+                root?.postDelayed(::refresh, 100)
+            })
             addView(Space(this@FloatingLyricsService).apply { layoutParams = LinearLayout.LayoutParams(16, 1) })
             addView(button(android.R.drawable.ic_menu_preferences) {
                 startActivity(Intent(this@FloatingLyricsService, com.hendo.hendomusic.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -114,7 +117,9 @@ class FloatingLyricsService : Service() {
     private fun collapseControls() { if (expanded && root?.childCount == 3) { root?.removeViewAt(2); expanded = false } }
     private fun refresh() {
         val player = controller ?: return
-        if (!player.isPlaying) { stopSelf(); return }
+        // Track transitions briefly report isPlaying=false. Keep the overlay alive and bind
+        // the next track's lyrics instead of destroying it during that transient pause.
+        if (player.currentMediaItem == null) { stopSelf(); return }
         root?.findViewById<TextView>(TITLE_ID)?.text = player.mediaMetadata.title?.toString() ?: "HendoMusic"
         val trackId = player.currentMediaItem?.mediaMetadata?.extras?.getString(PlaybackService.KEY_TRACK_ID)
         if (trackId != currentTrackId) {

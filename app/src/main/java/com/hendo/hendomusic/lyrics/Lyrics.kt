@@ -4,14 +4,13 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
-/** Builds a savable sync result, repairing any UI-state gaps without blocking the save UI. */
+fun hasCompleteSync(lines: List<String>, stamps: Map<Int, Long>): Boolean =
+    lines.isNotEmpty() && lines.indices.all(stamps::containsKey)
+
+/** Builds a result only after every visible lyric line has an explicit timestamp. */
 fun buildSyncedLyrics(trackId: String, lines: List<String>, stamps: Map<Int, Long>): List<SyncedLyricLine>? {
-    if (lines.isEmpty()) return null
-    var previous = lines.indices.firstNotNullOfOrNull { stamps[it] } ?: 0L
-    return lines.mapIndexed { index, text ->
-        previous = stamps[index] ?: previous
-        SyncedLyricLine("$trackId:$index", previous, text)
-    }
+    if (!hasCompleteSync(lines, stamps)) return null
+    return lines.mapIndexed { index, text -> SyncedLyricLine("$trackId:$index", stamps.getValue(index), text) }
 }
 
 sealed interface LyricsSearchState {
@@ -39,8 +38,12 @@ object LrcCodec {
         val cs = (it.startTimeMs % 1_000) / 10
         String.format(Locale.US, "[%02d:%02d.%02d]%s", min, sec, cs, it.text)
     }
-    fun activeIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int =
-        lines.indexOfLast { it.startTimeMs <= positionMs }
+    fun activeIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int {
+        val latest = lines.indexOfLast { it.startTimeMs <= positionMs }
+        if (latest <= 0) return latest
+        val activeStamp = lines[latest].startTimeMs
+        return lines.indexOfFirst { it.startTimeMs == activeStamp }
+    }
     fun offset(lines: List<SyncedLyricLine>, deltaMs: Long) = lines.map { it.copy(startTimeMs = (it.startTimeMs + deltaMs).coerceAtLeast(0)) }
 }
 
