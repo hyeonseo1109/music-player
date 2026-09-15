@@ -4,13 +4,26 @@ import java.util.Locale
 
 data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: String)
 
-fun hasCompleteSync(lines: List<String>, stamps: Map<Int, Long>): Boolean =
-    lines.isNotEmpty() && lines.indices.all(stamps::containsKey)
+fun canSaveSync(lines: List<String>, stamps: Map<Int, Long>): Boolean =
+    lines.isNotEmpty() && stamps.keys.any { it in lines.indices }
 
-/** Builds a result only after every visible lyric line has an explicit timestamp. */
+/**
+ * Builds a complete timeline once the user has recorded at least one timestamp.
+ *
+ * The editor can legitimately leave a hole when the line-group size is changed or the user
+ * moves with Previous/Next. Keeping Save disabled in that state made a visually completed edit
+ * impossible to finish. Missing entries inherit the closest preceding timestamp (or the first
+ * recorded timestamp for leading entries), so no line is silently written at 00:00.
+ */
 fun buildSyncedLyrics(trackId: String, lines: List<String>, stamps: Map<Int, Long>): List<SyncedLyricLine>? {
-    if (!hasCompleteSync(lines, stamps)) return null
-    return lines.mapIndexed { index, text -> SyncedLyricLine("$trackId:$index", stamps.getValue(index), text) }
+    if (!canSaveSync(lines, stamps)) return null
+    val valid = stamps.filterKeys { it in lines.indices }
+    val firstStamp = valid.minBy { it.key }.value.coerceAtLeast(0L)
+    var previousStamp = firstStamp
+    return lines.mapIndexed { index, text ->
+        previousStamp = valid[index]?.coerceAtLeast(0L) ?: previousStamp
+        SyncedLyricLine("$trackId:$index", previousStamp, text)
+    }
 }
 
 sealed interface LyricsSearchState {

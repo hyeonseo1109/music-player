@@ -6,8 +6,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LyricsTest {
-    @Test fun sync_requires_an_explicit_timestamp_for_every_line() {
-        assertNull(buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 0L)))
+    @Test fun sync_fills_a_trailing_unstamped_line_without_writing_zero() {
+        val partial = buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 500L))
+        assertEquals(listOf(500L, 500L), partial?.map { it.startTimeMs })
         val synced = buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 0L, 1 to 1_000L))
         assertEquals(listOf(0L, 1_000L), synced!!.map { it.startTimeMs })
     }
@@ -21,9 +22,9 @@ class LyricsTest {
     @Test fun `lrc round trip`() { val lines = LrcCodec.parse("[01:02.34]hello"); assertEquals(lines.single().text, LrcCodec.parse(LrcCodec.encode(lines)).single().text) }
     @Test fun `remote synced lyric becomes editable local copy without losing timestamps`() { val remote = "[00:01.250]first\n[00:03.500]second"; val local = LrcCodec.parse(remote); assertEquals(listOf(1250L,3500L), local.map { it.startTimeMs }); assertEquals(listOf("first","second"), local.map { it.text }) }
     @Test fun `synced lyric edit can explicitly reset structure`() { val original = LrcCodec.parse("[00:01.00]a\n[00:02.00]b"); val edited = "a\nnew\nb"; assertNotEquals(original.map { it.text }, edited.lines().filter { it.isNotBlank() }) }
-    @Test fun `manual sync rejects an unstamped trailing line`() {
-        val synced = buildSyncedLyrics("track", listOf("one", "two", "three"), mapOf(0 to 1_000L, 1 to 2_000L))
-        assertNull(synced)
+    @Test fun `manual sync fills an internal navigation gap`() {
+        val synced = buildSyncedLyrics("track", listOf("one", "two", "three"), mapOf(0 to 1_000L, 2 to 3_000L))
+        assertEquals(listOf(1_000L, 1_000L, 3_000L), synced?.map { it.startTimeMs })
     }
     @Test fun `manual group sync preserves every assigned timestamp`() {
         val synced = buildSyncedLyrics("track", listOf("original", "pronunciation", "meaning"), mapOf(0 to 4_200L, 1 to 4_200L, 2 to 4_200L))

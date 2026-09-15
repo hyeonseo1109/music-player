@@ -102,6 +102,14 @@ class PlaybackService : MediaSessionService() {
                 loopRange?.let { range -> if (newPosition.positionMs < range.startMs || newPosition.positionMs > range.endMs) clearLoop() }
             }
             override fun onEvents(player: Player, events: Player.Events) {
+                if (closeRequested && player.mediaItemCount > 0) {
+                    // A MediaController binding can keep this service instance alive after the
+                    // explicit X action. A later play request must revive notification updates.
+                    closeRequested = false
+                    notificationProvider.resumeUpdates()
+                    handler.removeCallbacks(notificationProgressTicker)
+                    handler.post(notificationProgressTicker)
+                }
                 if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) { resetPlaybackStats(); clearLoop() }
                 if (events.contains(Player.EVENT_REPEAT_MODE_CHANGED) && loopRange != null && player.repeatMode != Player.REPEAT_MODE_OFF) clearLoop()
                 if (events.containsAny(
@@ -502,7 +510,15 @@ private class HendoNotificationProvider(private val appContext: android.content.
         val factory = lastActionFactory ?: return
         val callback = lastCallback ?: return
         val rendered = createNotification(session, buttons, factory, callback)
+        // Media3's callback does not consistently re-apply custom RemoteViews snapshots on
+        // Samsung SystemUI. Notify the rebuilt snapshot directly as well as informing Media3.
+        appContext.getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, rendered.notification)
         callback.onNotificationChanged(rendered)
+    }
+
+    fun resumeUpdates() {
+        dismissed = false
     }
 
     fun dismiss() {
