@@ -154,7 +154,10 @@ class AudioSegmentEditor(private val context: Context, private val dao: AppDao) 
                     val size = extractor.readSampleData(buffer, 0)
                     if (size < 0) break
                     val outputUs = (outputBaseUs + inputUs - firstInputUs).coerceAtLeast(lastOutputUs + 1L)
-                    info.set(0, size, outputUs, extractor.sampleFlags and MediaCodec.BUFFER_FLAG_END_OF_STREAM.inv())
+                    val outputFlags = if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+                        MediaCodec.BUFFER_FLAG_KEY_FRAME
+                    } else 0
+                    info.set(0, size, outputUs, outputFlags)
                     muxer.writeSampleData(outputTrack, buffer, info)
                     if (inputUs > previousInputUs) lastDeltaUs = inputUs - previousInputUs
                     previousInputUs = inputUs
