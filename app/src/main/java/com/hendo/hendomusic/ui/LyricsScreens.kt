@@ -101,6 +101,7 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
     var loaded by remember(trackId) { mutableStateOf(false) }
     var confirmBack by remember { mutableStateOf(false) }
     var syncChangedWarning by remember { mutableStateOf(false) }
+    var removeSyncConfirm by remember { mutableStateOf(false) }
     var shareConfirm by remember { mutableStateOf(false) }
     var importedFromLrc by remember(trackId) { mutableStateOf(false) }
     val community by viewModel.communityAction.collectAsStateWithLifecycle()
@@ -144,6 +145,7 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
             OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().weight(1f).padding(16.dp), placeholder = { Text("가사를 붙여넣거나 직접 입력하세요") })
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(chooseLrc) { Text("LRC 가져오기") }
+                if (synced.isNotEmpty()) OutlinedButton({ removeSyncConfirm = true }) { Text("싱크 제거") }
                 Button({ viewModel.stageLyrics(LyricsSearchResult("draft", text.take(180), "LOCAL", synced.isNotEmpty(), 0, "", text, synced.takeIf { it.isNotEmpty() }?.let(LrcCodec::encode))); openSync() }, enabled = text.isNotBlank()) { Text("싱크 편집") }
             }
         }
@@ -161,6 +163,16 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
             viewModel.saveLyrics(trackId, text, emptyList(), source); viewModel.stageLyrics(null); syncChangedWarning = false; back()
         }) { Text("싱크 초기화 후 저장") } },
         dismissButton = { TextButton({ syncChangedWarning = false }) { Text("계속 편집") } },
+    )
+    if (removeSyncConfirm) AlertDialog(
+        onDismissRequest = { removeSyncConfirm = false },
+        title = { Text("싱크를 제거할까요?") },
+        text = { Text("가사는 그대로 유지하고 시간 정보만 삭제합니다.") },
+        confirmButton = { TextButton({
+            viewModel.removeLyricsSync(trackId, text) { synced = emptyList(); originalText = text }
+            removeSyncConfirm = false
+        }) { Text("싱크 제거") } },
+        dismissButton = { TextButton({ removeSyncConfirm = false }) { Text("취소") } },
     )
     if (shareConfirm) AlertDialog(
         onDismissRequest = { shareConfirm = false }, title = { Text("가사를 공유할까요?") },

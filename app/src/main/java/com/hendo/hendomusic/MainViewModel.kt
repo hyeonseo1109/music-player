@@ -285,6 +285,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         done()
     }
+    /** Keeps the user's lyric text while replacing any provider sync with an explicit plain save. */
+    fun removeLyricsSync(trackId: String, plainText: String, done: () -> Unit = {}) = viewModelScope.launch {
+        val existing = dao.lyrics(trackId) ?: LyricsEntity(trackId = trackId, plainText = plainText)
+        dao.replaceLyrics(
+            existing.copy(id = 0, source = LyricsSource.USER_MANUAL.name, plainText = plainText, updatedAt = System.currentTimeMillis()),
+            emptyList(),
+        )
+        done()
+    }
     fun importLrc(text: String) = LrcCodec.parse(text)
     fun importLrcUri(uri: Uri) = viewModelScope.launch {
         mutableLrcImport.value = runCatching {
