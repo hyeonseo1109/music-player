@@ -376,9 +376,8 @@ fun LuminaraApp(
                 val kind = back.arguments?.getString("kind")
                 val name = if (kind == "favorites") "좋아요한 곡" else "많이 들은 곡"
                 val specialTracks = if (kind == "favorites") {
-                    // updatedAt is bumped when the favorite state changes, so newest likes
-                    // appear at the bottom of the existing list order via ascending sort.
-                    ui.tracks.filter { it.isFavorite }.sortedBy { it.updatedAt }
+                    ui.tracks.filter { it.isFavorite }
+                        .sortedWith(compareBy<TrackEntity> { it.favoriteOrder ?: Int.MAX_VALUE }.thenBy { it.updatedAt })
                 } else ui.tracks.filter { it.playCount > 0 }.sortedWith(compareByDescending<TrackEntity> { it.playCount }.thenBy { it.title.lowercase() })
                 SpecialAlbumTracksScreen(name, specialTracks, viewModel, { nav.navigate("player") }, ::openAlbumPicker) { nav.popBackStack() }
             }
@@ -641,6 +640,15 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 
 @Composable private fun SpecialAlbumTracksScreen(name: String, tracks: List<TrackEntity>, viewModel: MainViewModel, openPlayer: () -> Unit, openAlbumPicker: (List<TrackEntity>) -> Unit, back: () -> Unit) {
     var selectedIds by remember(name) { mutableStateOf<Set<String>>(emptySet()) }
+    val localTracks = remember(name) { mutableStateListOf<TrackEntity>() }
+    var draggedId by remember(name) { mutableStateOf<String?>(null) }
+    var dragY by remember(name) { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    LaunchedEffect(tracks.map { it.id to it.favoriteOrder }, draggedId) {
+        if (draggedId == null && localTracks.map { it.id } != tracks.map { it.id }) {
+            localTracks.clear(); localTracks.addAll(tracks)
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(name) },
@@ -659,8 +667,33 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("아직 곡이 없습니다.") }
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-                items(tracks, key = { it.id }) { track ->
-                    MusicRow(track, track.id in selectedIds, { if (selectedIds.isEmpty()) { viewModel.play(track, tracks); openPlayer() } else selectedIds = selectedIds.toggle(track.id) }, { selectedIds = selectedIds.toggle(track.id) }, {})
+                items(localTracks, key = { it.id }) { track ->
+                    val dragModifier = if (name == "좋아요한 곡") Modifier.pointerInput(track.id, localTracks.size) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { draggedId = track.id; dragY = 0f },
+                            onDrag = { change, amount ->
+                                change.consume(); dragY += amount.y
+                                val from = localTracks.indexOfFirst { it.id == track.id }
+                                if (from >= 0) {
+                                    val rowPx = with(density) { 70.dp.toPx() }
+                                    val offset = (dragY / rowPx).toInt()
+                                    val target = (from + offset).coerceIn(localTracks.indices)
+                                    if (target != from) {
+                                        localTracks.add(target, localTracks.removeAt(from))
+                                        dragY -= (target - from) * rowPx
+                                    }
+                                }
+                            },
+                            onDragCancel = { draggedId = null; dragY = 0f },
+                            onDragEnd = {
+                                viewModel.reorderFavorites(localTracks.map { it.id })
+                                draggedId = null; dragY = 0f
+                            },
+                        )
+                    } else Modifier
+                    Box(dragModifier) {
+                    MusicRow(track, track.id in selectedIds, { if (selectedIds.isEmpty()) { viewModel.play(track, localTracks); openPlayer() } else selectedIds = selectedIds.toggle(track.id) }, { selectedIds = selectedIds.toggle(track.id) }, {})
+                    }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .58f))
                 }
             }

@@ -335,6 +335,7 @@ internal fun mergeScannedTrack(fresh: TrackEntity, old: TrackEntity): TrackEntit
     playCount = old.playCount,
     lastPlayedAt = old.lastPlayedAt,
     isFavorite = old.isFavorite,
+    favoriteOrder = old.favoriteOrder,
     customLyricsId = old.customLyricsId,
     createdAt = old.createdAt,
     updatedAt = maxOf(old.updatedAt, fresh.updatedAt),

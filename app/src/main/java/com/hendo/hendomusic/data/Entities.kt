@@ -31,6 +31,8 @@ data class TrackEntity(
     val playCount: Int = 0,
     val lastPlayedAt: Long? = null,
     val isFavorite: Boolean = false,
+    /** Stable user-defined order inside the favorites collection. */
+    val favoriteOrder: Int? = null,
     val customLyricsId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),

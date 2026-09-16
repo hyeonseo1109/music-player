@@ -22,7 +22,19 @@ interface AppDao {
     @Upsert suspend fun upsertTracks(tracks: List<TrackEntity>)
     @Query("DELETE FROM tracks WHERE uri NOT IN (:validUris)") suspend fun deleteMissing(validUris: List<String>)
     @Query("DELETE FROM tracks") suspend fun deleteAllTracks()
-    @Query("UPDATE tracks SET isFavorite = NOT isFavorite, updatedAt = :now WHERE id = :id") suspend fun toggleFavorite(id: String, now: Long)
+    @Query("SELECT COALESCE(MAX(favoriteOrder), -1) + 1 FROM tracks WHERE isFavorite = 1") suspend fun nextFavoriteOrder(): Int
+    @Query("UPDATE tracks SET isFavorite=:favorite, favoriteOrder=:orderValue, updatedAt=:now WHERE id=:id")
+    suspend fun setFavorite(id: String, favorite: Boolean, orderValue: Int?, now: Long)
+    @Transaction suspend fun toggleFavorite(id: String, now: Long) {
+        val item = track(id) ?: return
+        if (item.isFavorite) setFavorite(id, false, null, now)
+        else setFavorite(id, true, nextFavoriteOrder(), now)
+    }
+    @Query("UPDATE tracks SET favoriteOrder=:orderValue WHERE id=:id AND isFavorite=1")
+    suspend fun updateFavoriteOrder(id: String, orderValue: Int)
+    @Transaction suspend fun reorderFavorites(ids: List<String>) {
+        ids.distinct().forEachIndexed { index, id -> updateFavoriteOrder(id, index) }
+    }
     @Query("UPDATE tracks SET title=:title, artist=:artist, album=:album, albumArtist=:albumArtist, updatedAt=:now WHERE id=:id")
     suspend fun updateMetadata(id: String, title: String, artist: String, album: String, albumArtist: String?, now: Long)
     @Query("UPDATE tracks SET customArtworkUri=:uri, customArtworkSource=:source, updatedAt=:now WHERE id=:id")

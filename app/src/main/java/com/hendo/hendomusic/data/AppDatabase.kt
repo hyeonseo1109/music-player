@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [TrackEntity::class, LyricsEntity::class, LyricLineEntity::class, AlbumFolderEntity::class,
         UserAlbumEntity::class, AlbumTrackEntity::class, PlaybackHistoryEntity::class,
         PlaybackSessionEntity::class, PlaybackQueueEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,8 +32,23 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE album_folders ADD COLUMN artworkUri TEXT")
             }
         }
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE tracks ADD COLUMN favoriteOrder INTEGER")
+                // Preserve the visible legacy order (oldest like first) without touching audio.
+                database.execSQL("""
+                    UPDATE tracks SET favoriteOrder = (
+                        SELECT COUNT(*) - 1 FROM tracks AS earlier
+                        WHERE earlier.isFavorite = 1 AND (
+                            earlier.updatedAt < tracks.updatedAt OR
+                            (earlier.updatedAt = tracks.updatedAt AND earlier.id <= tracks.id)
+                        )
+                    ) WHERE isFavorite = 1
+                """.trimIndent())
+            }
+        }
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext, AppDatabase::class.java, "luminara.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).fallbackToDestructiveMigration(false).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).fallbackToDestructiveMigration(false).build()
     }
 }

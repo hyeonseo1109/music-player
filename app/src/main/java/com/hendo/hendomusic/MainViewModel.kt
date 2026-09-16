@@ -151,6 +151,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setFolderGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setFolderGridMode(value) }
     fun setFolderGridColumns(value: Int) = viewModelScope.launch { container.preferences.setFolderGridColumns(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
+    fun reorderFavorites(ids: List<String>) = viewModelScope.launch { dao.reorderFavorites(ids) }
     fun editAudio(track: TrackEntity, startMs: Long, endMs: Long, mode: AudioEditMode) = viewModelScope.launch {
         mutableAudioEdit.value = AudioEditState.Saving
         mutableAudioEdit.value = runCatching { AudioEditState.Success(audioSegmentEditor.edit(track, startMs, endMs, mode)) }
