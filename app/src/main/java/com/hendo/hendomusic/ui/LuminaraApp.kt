@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -560,7 +561,7 @@ private fun AlbumContentPickerScreen(ui: MainUiState, vm: MainViewModel, title: 
             IconButton(onClick = { vm.scan() }) { Icon(Icons.Default.Refresh, "다시 검색") }
         }
         HeaderGradientDivider()
-        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (searchField.text.isNotEmpty()) IconButton({ searchField = TextFieldValue(""); vm.setQuery("") }) { Icon(Icons.Default.Close, "검색 지우기") } }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).hendoClipboardToolbar({ searchField.text }) { pasted -> searchField = searchField.copy(text = searchField.text + pasted); vm.setQuery(searchField.text) }.onFocusChanged { if (it.isFocused) selectedIds = emptySet() }, shape = RoundedCornerShape(18.dp))
+        OutlinedTextField(value = searchField, onValueChange = { value -> searchField = value; vm.setQuery(value.text) }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (searchField.text.isNotEmpty()) IconButton({ searchField = TextFieldValue(""); vm.setQuery("") }) { Icon(Icons.Default.Close, "검색 지우기") } }, placeholder = { Text("곡, 가수, 앨범 또는 초성 검색") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).onFocusChanged { if (it.isFocused) selectedIds = emptySet() }, shape = RoundedCornerShape(18.dp))
         Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(if (selectedTracks.isEmpty()) "${ui.visibleTracks.size}곡" else "${selectedTracks.size}곡", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (selectedTracks.isEmpty()) Box { TextButton(onClick = { sortOpen = true }) { Icon(Icons.Default.Sort, null); Text(sortLabel(ui.settings.sort)) }
@@ -689,7 +690,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
 }
 
 @Composable private fun TrackDetailsDialog(track: TrackEntity, close: () -> Unit) {
-    AlertDialog(onDismissRequest = close, title = { Text("상세정보") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    AlertDialog(onDismissRequest = close, title = { Text("상세정보") }, text = { SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(track.fileName, fontWeight = FontWeight.Bold)
         Text("크기: ${track.relativePath ?: track.uri}")
         Text("길이: ${formatTime(track.durationMs)}")
@@ -697,7 +698,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         Text("아티스트: ${track.artist}")
         Text("다운로드 날짜: ${SimpleDateFormat("yyyy년 M월 d일 HH:mm", Locale.getDefault()).format(Date(track.dateAdded))}")
         Text("경로: ${track.relativePath ?: track.uri}", style = MaterialTheme.typography.bodySmall)
-    } }, confirmButton = { TextButton(onClick = close) { Text("확인") } })
+    } } }, confirmButton = { TextButton(onClick = close) { Text("확인") } })
 }
 
 @Composable private fun TrackMenu(track: TrackEntity, vm: MainViewModel, nav: NavHostController, requestDelete: (TrackEntity) -> Unit, playQueue: List<TrackEntity>, openAlbumPicker: (List<TrackEntity>) -> Unit, afterPlay: () -> Unit, close: () -> Unit, removeFromAlbum: (() -> Unit)? = null) {
@@ -887,7 +888,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         .collectAsStateWithLifecycle(initialValue = "" to emptyList())
     Scaffold(topBar = { TopAppBar({ Text("가사") }, navigationIcon = { IconButton(back) { Icon(Icons.Default.ArrowBack, "뒤로") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (lyrics.first.isBlank()) "등록된 가사가 없습니다." else if (lyrics.second.isEmpty()) lyrics.first else lyrics.second.joinToString("\n") { if (it.startTimeMs <= positionMs) "♪ ${it.text}" else it.text }, style = MaterialTheme.typography.bodyLarge)
+            SelectionContainer { Text(if (lyrics.first.isBlank()) "등록된 가사가 없습니다." else if (lyrics.second.isEmpty()) lyrics.first else lyrics.second.joinToString("\n") { if (it.startTimeMs <= positionMs) "♪ ${it.text}" else it.text }, style = MaterialTheme.typography.bodyLarge) }
         }
     }
 }
@@ -940,10 +941,10 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             }
             LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 16.dp, top = if (fontScale >= 1.2f) 28.dp else 56.dp, end = 16.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(synced, key = { _, line -> line.id }) { index, line ->
-                    Text(line.text, Modifier.clickable { vm.player.seekTo(line.startTimeMs) }, color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (index == active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal)
+                    SelectionContainer { Text(line.text, Modifier.clickable { vm.player.seekTo(line.startTimeMs) }, color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (index == active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal) }
                 }
             }
-        } else Text(plain, Modifier.padding(16.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium)
+        } else SelectionContainer { Text(plain, Modifier.padding(16.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
