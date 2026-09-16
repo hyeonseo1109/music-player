@@ -36,9 +36,25 @@ data class TrackEntity(
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
-/** USER > EMBEDDED > AUTO_SEARCH > placeholder. Legacy custom artwork is USER. */
+private val unknownAlbumNames = setOf(
+    "<unknown>",
+    "unknown",
+    "unknown album",
+    "알 수 없는 앨범",
+)
+
+fun String?.isMissingAlbumName(): Boolean {
+    val normalized = this?.trim()?.lowercase().orEmpty()
+    return normalized.isEmpty() || normalized in unknownAlbumNames
+}
+
+/**
+ * USER artwork is track-specific and remains valid without an album. MediaStore album artwork
+ * and automatic album search results are album-scoped, so an unknown album must never inherit
+ * them from another track which happens to share Android's synthetic unknown-album id.
+ */
 fun TrackEntity.displayArtworkUri(): String? =
-    customArtworkUri ?: albumArtUri ?: autoArtworkUri
+    customArtworkUri ?: if (album.isMissingAlbumName()) null else albumArtUri ?: autoArtworkUri
 
 @Entity(tableName = "lyrics", indices = [Index("trackId")])
 data class LyricsEntity(

@@ -2,6 +2,7 @@ package com.hendo.hendomusic
 
 import com.hendo.hendomusic.data.TrackEntity
 import com.hendo.hendomusic.data.displayArtworkUri
+import com.hendo.hendomusic.data.isMissingAlbumName
 import com.hendo.hendomusic.metadata.MetadataConfidence
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,9 +10,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MetadataPriorityTest {
-    private fun track(custom: String? = null, embedded: String? = null, auto: String? = null) = TrackEntity(
+    private fun track(custom: String? = null, embedded: String? = null, auto: String? = null, album: String = "Album") = TrackEntity(
         id = "t", mediaStoreId = null, uri = "content://t", relativePath = null, fileName = "t.mp3",
-        title = "Song", artist = "Artist", album = "Album", albumArtist = null, durationMs = 1,
+        title = "Song", artist = "Artist", album = album, albumArtist = null, durationMs = 1,
         dateAdded = 0, dateModified = 0, albumArtUri = embedded, customArtworkUri = custom, autoArtworkUri = auto,
     )
 
@@ -19,6 +20,24 @@ class MetadataPriorityTest {
         assertEquals("user", track("user", "embedded", "auto").displayArtworkUri())
         assertEquals("embedded", track(embedded = "embedded", auto = "auto").displayArtworkUri())
         assertEquals("auto", track(auto = "auto").displayArtworkUri())
+    }
+
+    @Test fun `tracks without albums never share album scoped artwork`() {
+        listOf("", "   ", "<unknown>", "UNKNOWN", "Unknown Album", "알 수 없는 앨범").forEach { album ->
+            val track = track(custom = null, embedded = "content://shared/unknown", auto = "https://auto", album = album)
+            assertTrue(album.isMissingAlbumName())
+            assertEquals(null, track.displayArtworkUri())
+        }
+    }
+
+    @Test fun `explicit user artwork remains track specific without an album`() {
+        val track = track(custom = "file://user", embedded = "content://shared/unknown", auto = "https://auto", album = "")
+        assertEquals("file://user", track.displayArtworkUri())
+    }
+
+    @Test fun `known album keeps embedded and automatic priority`() {
+        assertEquals("content://embedded", track(custom = null, embedded = "content://embedded", auto = "https://auto", album = "Album").displayArtworkUri())
+        assertEquals("https://auto", track(custom = null, embedded = null, auto = "https://auto", album = "Album").displayArtworkUri())
     }
 
     @Test fun `auto confidence requires artist and matching title or album`() {

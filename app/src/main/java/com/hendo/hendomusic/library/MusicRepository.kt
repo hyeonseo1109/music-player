@@ -46,7 +46,8 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                 val fileName = c.getString(col(MediaStore.Audio.Media.DISPLAY_NAME)) ?: "Unknown"
                 val title = c.getString(col(MediaStore.Audio.Media.TITLE)).nullIfUnknown() ?: fileName.substringBeforeLast('.')
                 val artist = c.getString(col(MediaStore.Audio.Media.ARTIST)).nullIfUnknown() ?: "알 수 없는 아티스트"
-                val album = c.getString(col(MediaStore.Audio.Media.ALBUM)).nullIfUnknown() ?: "알 수 없는 앨범"
+                val rawAlbum = c.getString(col(MediaStore.Audio.Media.ALBUM)).nullIfUnknown()
+                val album = rawAlbum ?: "알 수 없는 앨범"
                 val albumId = c.getLong(col(MediaStore.Audio.Media.ALBUM_ID))
                 found += TrackEntity(
                     id = "ms:$mediaId", mediaStoreId = mediaId, uri = uri.toString(),
@@ -55,7 +56,9 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                     durationMs = c.getLong(col(MediaStore.Audio.Media.DURATION)),
                     dateAdded = c.getLong(col(MediaStore.Audio.Media.DATE_ADDED)) * 1000,
                     dateModified = c.getLong(col(MediaStore.Audio.Media.DATE_MODIFIED)) * 1000,
-                    albumArtUri = if (albumId > 0) "content://media/external/audio/albumart/$albumId" else null,
+                    // MediaStore commonly assigns the same synthetic ALBUM_ID to unrelated
+                    // tracks whose album tag is missing. Never persist that shared artwork.
+                    albumArtUri = if (rawAlbum != null && albumId > 0) "content://media/external/audio/albumart/$albumId" else null,
                 )
             }.onFailure { errors++ }
         }
