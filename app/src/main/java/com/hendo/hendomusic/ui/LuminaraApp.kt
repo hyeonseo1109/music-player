@@ -115,7 +115,7 @@ fun LuminaraApp(
     val startMainTab = ui.settings.lastMainTab.takeIf { it in setOf("library", "albums", "settings") } ?: "library"
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
     // Album and folder lists keep the mini player available after leaving the full player.
-    val showChrome = currentRoute !in setOf("player", "nowLyrics/{trackId}", "lyricsSearch/{trackId}", "lyrics/{trackId}", "sync/{trackId}", "metadata/{trackId}", "queue")
+    val showChrome = currentRoute !in setOf("player", "nowLyrics/{trackId}", "lyricsSearch/{trackId}", "lyrics/{trackId}", "sync/{trackId}", "metadata/{trackId}", "trim/{trackId}", "queue")
     var librarySelection by remember { mutableStateOf<LibrarySelectionUi?>(null) }
     var selectionResetKey by remember { mutableIntStateOf(0) }
     var albumPickerTracks by remember { mutableStateOf<List<TrackEntity>>(emptyList()) }
@@ -418,6 +418,12 @@ fun LuminaraApp(
             composable("metadata/{trackId}") { back ->
                 MetadataEditorScreen(back.arguments?.getString("trackId").orEmpty(), ui, viewModel, requestMetadataWrite, requestArtworkWrite) { nav.popBackStack() }
             }
+            composable("trim/{trackId}") { back ->
+                val trackId = back.arguments?.getString("trackId").orEmpty()
+                ui.tracks.firstOrNull { it.id == trackId }?.let { track ->
+                    AudioTrimScreen(track, viewModel) { nav.popBackStack() }
+                }
+            }
         }
     } }
 }
@@ -704,6 +710,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { openAlbumPicker(listOf(track)); close() }
         MenuLine(Icons.Default.Edit, "곡 정보 수정하기") { close(); nav.navigate("metadata/${track.id}") }
+        MenuLine(Icons.Default.ContentCut, "음원 자르기") { close(); nav.navigate("trim/${track.id}") }
         MenuLine(Icons.Default.Lyrics, "가사 검색") { close(); nav.navigate("lyricsSearch/${track.id}") }
         MenuLine(Icons.Default.EditNote, "가사 직접 입력") { close(); vm.stageLyrics(null); nav.navigate("lyrics/${track.id}") }
         if (removeFromAlbum != null) MenuLine(Icons.Default.RemoveCircleOutline, "앨범에서 제외") { removeConfirm = true }
@@ -805,7 +812,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     val previewOff = !ui.settings.coverLyricsPreview
     val sectionGap = if (compactLandscape) 10.dp else if (previewOff) 18.dp else 24.dp
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = if (compactLandscape) 12.dp else 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.fillMaxWidth().padding(bottom = if (lyricsMode) sectionGap else 0.dp), verticalAlignment = Alignment.CenterVertically) { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.KeyboardArrowDown, null) }; if (lyricsMode) { Row(Modifier.weight(1f).clickable { lyricsMode = false }, verticalAlignment = Alignment.CenterVertically) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), 56); Column(Modifier.padding(start = 12.dp)) { Text(item?.mediaMetadata?.title?.toString().orEmpty(), Modifier.basicMarquee(), maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Bold); Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } } } else Text("지금 재생 중", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Box { IconButton({ moreOpen = true }) { Icon(Icons.Default.MoreVert, "더보기") }; DropdownMenu(moreOpen, { moreOpen = false }) { val id = item?.mediaMetadata?.extras?.getString("track_id"); DropdownMenuItem({ Text("상세 정보") }, { moreOpen = false; detailsOpen = true }); DropdownMenuItem({ Text("곡 정보·앨범 커버 변경") }, { moreOpen = false; id?.let { nav.navigate("metadata/$it") } }); DropdownMenuItem({ Text("가사 검색") }, { moreOpen = false; id?.let { nav.navigate("lyricsSearch/$it") } }); DropdownMenuItem({ Text("가사 직접 입력/수정") }, { moreOpen = false; id?.let { nav.navigate("lyrics/$it") } }); DropdownMenuItem({ Text("가사 싱크 편집") }, { moreOpen = false; id?.let { nav.navigate("sync/$it") } }) } } }
+        Row(Modifier.fillMaxWidth().padding(bottom = if (lyricsMode) sectionGap else 0.dp), verticalAlignment = Alignment.CenterVertically) { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.KeyboardArrowDown, null) }; if (lyricsMode) { Row(Modifier.weight(1f).clickable { lyricsMode = false }, verticalAlignment = Alignment.CenterVertically) { Artwork(item?.mediaMetadata?.artworkUri?.toString(), 56); Column(Modifier.padding(start = 12.dp)) { Text(item?.mediaMetadata?.title?.toString().orEmpty(), Modifier.basicMarquee(), maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Bold); Text(item?.mediaMetadata?.artist?.toString().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } } } else Text("지금 재생 중", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Box { IconButton({ moreOpen = true }) { Icon(Icons.Default.MoreVert, "더보기") }; DropdownMenu(moreOpen, { moreOpen = false }) { val id = item?.mediaMetadata?.extras?.getString("track_id"); DropdownMenuItem({ Text("상세 정보") }, { moreOpen = false; detailsOpen = true }); DropdownMenuItem({ Text("곡 정보·앨범 커버 변경") }, { moreOpen = false; id?.let { nav.navigate("metadata/$it") } }); DropdownMenuItem({ Text("음원 자르기") }, { moreOpen = false; id?.let { nav.navigate("trim/$it") } }); DropdownMenuItem({ Text("가사 검색") }, { moreOpen = false; id?.let { nav.navigate("lyricsSearch/$it") } }); DropdownMenuItem({ Text("가사 직접 입력/수정") }, { moreOpen = false; id?.let { nav.navigate("lyrics/$it") } }); DropdownMenuItem({ Text("가사 싱크 편집") }, { moreOpen = false; id?.let { nav.navigate("sync/$it") } }) } } }
         val track = tracks.find { it.id == item?.mediaMetadata?.extras?.getString("track_id") }
         if (detailsOpen && track != null) TrackDetailsDialog(track) { detailsOpen = false }
         if (!lyricsMode) {

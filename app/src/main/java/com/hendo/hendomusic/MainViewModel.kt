@@ -11,6 +11,9 @@ import com.hendo.hendomusic.data.*
 import com.hendo.hendomusic.library.KoreanSearch
 import com.hendo.hendomusic.library.PlaylistImportCodec
 import com.hendo.hendomusic.library.ScanResult
+import com.hendo.hendomusic.library.AudioEditMode
+import com.hendo.hendomusic.library.AudioEditState
+import com.hendo.hendomusic.library.AudioSegmentEditor
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
 import com.hendo.hendomusic.lyrics.LyricsSearchResult
@@ -57,6 +60,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = container.database.dao()
     val player = PlayerConnection(application)
     private val artworkRepository = ArtworkRepository(application)
+    private val audioSegmentEditor = AudioSegmentEditor(application, dao)
+    private val mutableAudioEdit = MutableStateFlow<AudioEditState>(AudioEditState.Idle)
+    val audioEdit = mutableAudioEdit.asStateFlow()
     private val mutableArtworkSearch = MutableStateFlow<ArtworkSearchState>(ArtworkSearchState.Idle)
     val artworkSearch = mutableArtworkSearch.asStateFlow()
     private val lrcLibProvider = LrcLibLyricsProvider()
@@ -145,6 +151,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setFolderGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setFolderGridMode(value) }
     fun setFolderGridColumns(value: Int) = viewModelScope.launch { container.preferences.setFolderGridColumns(value) }
     fun toggleFavorite(id: String) = viewModelScope.launch { container.musicRepository.toggleFavorite(id) }
+    fun editAudio(track: TrackEntity, startMs: Long, endMs: Long, mode: AudioEditMode) = viewModelScope.launch {
+        mutableAudioEdit.value = AudioEditState.Saving
+        mutableAudioEdit.value = runCatching { AudioEditState.Success(audioSegmentEditor.edit(track, startMs, endMs, mode)) }
+            .getOrElse { AudioEditState.Error(it.localizedMessage ?: "음원 편집에 실패했습니다.") }
+    }
+    fun resetAudioEdit() { mutableAudioEdit.value = AudioEditState.Idle }
     fun deleteSelectedTracks(ids: List<String>) = viewModelScope.launch { ids.forEach(player::removeTrack); dao.deleteTracksCompletely(ids) }
     fun updateMetadata(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?, done: (String) -> Unit) = viewModelScope.launch {
         done(runCatching {
