@@ -76,6 +76,15 @@ class PlayerConnection(private val context: Context) {
     fun prepareForSync(track: com.hendo.hendomusic.data.TrackEntity) {
         clearLoop()
         controller?.apply {
+            val currentTrackId = currentMediaItem?.mediaMetadata?.extras
+                ?.getString(PlaybackService.KEY_TRACK_ID)
+            if (currentTrackId == track.id) {
+                // The sync button only samples currentPosition. Re-preparing or seeking the
+                // already active item here caused a short restart on every screen re-entry.
+                if (playbackState == Player.STATE_IDLE) prepare()
+                play()
+                return@apply
+            }
             var index = (0 until mediaItemCount).indexOfFirst {
                 getMediaItemAt(it).mediaMetadata.extras?.getString(PlaybackService.KEY_TRACK_ID) == track.id
             }
@@ -84,7 +93,7 @@ class PlayerConnection(private val context: Context) {
                 index = mediaItemCount - 1
             }
             seekTo(index, 0)
-            prepare()
+            if (playbackState == Player.STATE_IDLE) prepare()
             play()
         }
     }
