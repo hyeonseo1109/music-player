@@ -103,6 +103,10 @@ class PlayerConnection(private val context: Context) {
             player.prepare(); player.play()
         }
     } }
+    fun pause() { controller?.pause() }
+    /** Reads MediaController directly so lyric timing never depends on a delayed UI ticker. */
+    fun currentPositionMs(): Long = controller?.currentPosition?.coerceAtLeast(0L)
+        ?: mutableState.value.positionMs.coerceAtLeast(0L)
     fun next() {
         clearLoop()
         controller?.let { player ->

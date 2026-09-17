@@ -2,6 +2,8 @@
 
 package com.hendo.hendomusic.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -38,6 +40,10 @@ fun AudioTrimScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Un
             prepare()
         }
     }
+    LaunchedEffect(track.id) {
+        // The editor owns preview audio. Pause the app player to prevent two players sounding.
+        viewModel.player.pause()
+    }
     DisposableEffect(preview) { onDispose { preview.release() } }
     LaunchedEffect(previewPlaying, selection) {
         while (previewPlaying) {
@@ -57,10 +63,22 @@ fun AudioTrimScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Un
             navigationIcon = { IconButton(back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         ) },
+        bottomBar = {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Button(
+                        onClick = { viewModel.editAudio(track, selection.start.roundToLong(), selection.endInclusive.roundToLong(), mode) },
+                        enabled = editState !is AudioEditState.Saving && selection.endInclusive - selection.start >= 100f,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (editState is AudioEditState.Saving) "저장 중…" else "선택 구간으로 새 파일 만들기") }
+                    TextButton(back, Modifier.fillMaxWidth()) { Text("취소") }
+                }
+            }
+        },
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(20.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Text(track.title, style = MaterialTheme.typography.titleLarge)
@@ -85,7 +103,17 @@ fun AudioTrimScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Un
                     }
                     Text("선택 구간 ${formatEditTime((selection.endInclusive - selection.start).roundToLong())}")
                     Text("미리듣기 ${formatEditTime(previewPosition)}", color = MaterialTheme.colorScheme.primary)
+                    Slider(
+                        value = previewPosition.toFloat().coerceIn(selection.start, selection.endInclusive),
+                        onValueChange = { value ->
+                            preview.pause(); previewPlaying = false
+                            previewPosition = value.roundToLong()
+                            preview.seekTo(previewPosition)
+                        },
+                        valueRange = selection.start..selection.endInclusive.coerceAtLeast(selection.start + 1f),
+                    )
                     FilledTonalButton(onClick = {
+                        viewModel.player.pause()
                         if (previewPlaying) {
                             preview.pause(); previewPlaying = false
                         } else {
@@ -111,13 +139,6 @@ fun AudioTrimScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text("원본 파일은 변경하지 않습니다. 결과는 새 M4A 파일로 생성됩니다.", style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = { viewModel.editAudio(track, selection.start.roundToLong(), selection.endInclusive.roundToLong(), mode) },
-                enabled = editState !is AudioEditState.Saving && selection.endInclusive - selection.start >= 100f,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (editState is AudioEditState.Saving) "저장 중…" else "새 파일로 저장") }
-            TextButton(back, Modifier.fillMaxWidth()) { Text("취소") }
         }
     }
     when (val state = editState) {

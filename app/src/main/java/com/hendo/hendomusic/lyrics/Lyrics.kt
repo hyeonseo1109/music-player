@@ -52,9 +52,8 @@ object LrcCodec {
         String.format(Locale.US, "[%02d:%02d.%02d]%s", min, sec, cs, it.text)
     }
     fun activeIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int {
-        val latest = lines.indexOfLast { it.startTimeMs <= positionMs }
-        if (latest <= 0) return latest
-        val activeStamp = lines[latest].startTimeMs
+        val activeStamp = lines.asSequence().map { it.startTimeMs }
+            .filter { it <= positionMs }.maxOrNull() ?: return -1
         return lines.indexOfFirst { it.startTimeMs == activeStamp }
     }
     fun offset(lines: List<SyncedLyricLine>, deltaMs: Long) = lines.map { it.copy(startTimeMs = (it.startTimeMs + deltaMs).coerceAtLeast(0)) }

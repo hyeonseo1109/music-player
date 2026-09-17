@@ -281,6 +281,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startSyncPlayback(trackId: String) = viewModelScope.launch {
         dao.track(trackId)?.let(player::prepareForSync)
     }
+    fun currentPlaybackPositionMs(): Long = player.currentPositionMs()
     fun play(track: TrackEntity, library: List<TrackEntity> = emptyList()) = viewModelScope.launch {
         player.play(track, library)
         container.metadataEnricher.enrichTrack(track)

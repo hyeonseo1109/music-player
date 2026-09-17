@@ -213,7 +213,7 @@ fun LyricsSyncScreen(
             val existing = if (staged != null) staged!!.plainText to staged!!.syncedText?.let(LrcCodec::parse).orEmpty() else viewModel.lyrics(trackId)
             lines = existing.first.lines().filter { it.isNotBlank() }
             stamps = existing.second.take(lines.size).mapIndexed { i, line -> i to line.startTimeMs }.toMap(); loaded = true
-            // Manual syncing always starts with a predictable zero-based playback position.
+            // Keep the active player's position; each sync press samples the controller directly.
             viewModel.startSyncPlayback(trackId)
         }
     }
@@ -246,7 +246,8 @@ fun LyricsSyncScreen(
             Button({
                 if (lines.isNotEmpty() && index < lines.size) {
                     val targets = index until (index + groupSize).coerceAtMost(lines.size)
-                    stamps = stamps + targets.associateWith { playback.positionMs.coerceAtLeast(0) }
+                    val exactPosition = viewModel.currentPlaybackPositionMs()
+                    stamps = stamps + targets.associateWith { exactPosition }
                     dirty = true
                     index = (index + groupSize).coerceAtMost(lines.size)
                 }

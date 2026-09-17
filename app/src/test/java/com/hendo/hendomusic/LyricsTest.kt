@@ -34,5 +34,8 @@ class LyricsTest {
     @Test fun `complete stamps remain savable after seeking backwards`() {
         val synced = buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 2_000L, 1 to 1_000L))
         assertEquals(listOf(2_000L, 1_000L), synced?.map { it.startTimeMs })
+        assertEquals(-1, LrcCodec.activeIndex(synced.orEmpty(), 500L))
+        assertEquals(1, LrcCodec.activeIndex(synced.orEmpty(), 1_500L))
+        assertEquals(0, LrcCodec.activeIndex(synced.orEmpty(), 2_500L))
     }
 }
