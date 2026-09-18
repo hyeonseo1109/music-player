@@ -47,7 +47,10 @@ private val unknownAlbumNames = setOf(
 
 fun String?.isMissingAlbumName(): Boolean {
     val normalized = this?.trim()?.lowercase().orEmpty()
-    return normalized.isEmpty() || normalized in unknownAlbumNames
+    return normalized.isEmpty() || normalized in unknownAlbumNames ||
+        normalized.startsWith("unknown album ") ||
+        normalized.startsWith("<unknown>") ||
+        normalized.startsWith("알 수 없는 앨범 ")
 }
 
 /**
@@ -55,8 +58,12 @@ fun String?.isMissingAlbumName(): Boolean {
  * and automatic album search results are album-scoped, so an unknown album must never inherit
  * them from another track which happens to share Android's synthetic unknown-album id.
  */
-fun TrackEntity.displayArtworkUri(): String? =
-    customArtworkUri ?: if (album.isMissingAlbumName()) null else albumArtUri ?: autoArtworkUri
+fun TrackEntity.displayArtworkUri(): String? {
+    if (album.isMissingAlbumName()) {
+        return customArtworkUri.takeIf { customArtworkSource == ArtworkSource.USER.name }
+    }
+    return customArtworkUri ?: albumArtUri ?: autoArtworkUri
+}
 
 @Entity(tableName = "lyrics", indices = [Index("trackId")])
 data class LyricsEntity(

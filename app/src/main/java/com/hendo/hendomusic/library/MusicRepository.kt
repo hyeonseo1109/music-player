@@ -58,7 +58,7 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                     dateModified = c.getLong(col(MediaStore.Audio.Media.DATE_MODIFIED)) * 1000,
                     // MediaStore commonly assigns the same synthetic ALBUM_ID to unrelated
                     // tracks whose album tag is missing. Never persist that shared artwork.
-                    albumArtUri = if (rawAlbum != null && albumId > 0) "content://media/external/audio/albumart/$albumId" else null,
+                    albumArtUri = if (!rawAlbum.isMissingAlbumName() && albumId > 0) "content://media/external/audio/albumart/$albumId" else null,
                 )
             }.onFailure { errors++ }
         }

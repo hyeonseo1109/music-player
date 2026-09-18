@@ -47,6 +47,9 @@ interface AppDao {
           AND autoArtworkUri IS NULL
           AND TRIM(album) != ''
           AND LOWER(TRIM(album)) NOT IN ('<unknown>', 'unknown', 'unknown album', '알 수 없는 앨범')
+          AND LOWER(TRIM(album)) NOT LIKE 'unknown album %'
+          AND LOWER(TRIM(album)) NOT LIKE '<unknown>%'
+          AND LOWER(TRIM(album)) NOT LIKE '알 수 없는 앨범 %'
         LIMIT :limit""")
     suspend fun artworkEnrichmentCandidates(limit: Int): List<TrackEntity>
     @Query("SELECT tracks.* FROM tracks LEFT JOIN lyrics ON lyrics.trackId = tracks.id WHERE lyrics.id IS NULL OR (lyrics.source LIKE 'AUTO_%' AND TRIM(lyrics.plainText) = '') LIMIT :limit")

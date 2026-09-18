@@ -7,6 +7,7 @@ import com.hendo.hendomusic.data.LyricLineEntity
 import com.hendo.hendomusic.data.LyricsEntity
 import com.hendo.hendomusic.data.LyricsSource
 import com.hendo.hendomusic.data.TrackEntity
+import com.hendo.hendomusic.data.isMissingAlbumName
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.network.ArtworkProvider
 import com.hendo.hendomusic.network.GenieLyricsProvider
@@ -57,7 +58,7 @@ class AutoMetadataEnricher(
         // provider result without changing the persisted metadata priority rules.
         retryAfterMs[track.id] = now + retryDelayMs
         try {
-            if (track.customArtworkUri == null && track.albumArtUri.isNullOrBlank() && track.autoArtworkUri == null) enrichArtwork(track)
+            if (!track.album.isMissingAlbumName() && track.customArtworkUri == null && track.albumArtUri.isNullOrBlank() && track.autoArtworkUri == null) enrichArtwork(track)
             val existingLyrics = dao.lyrics(track.id)
             when {
                 existingLyrics == null -> enrichLyrics(track)
