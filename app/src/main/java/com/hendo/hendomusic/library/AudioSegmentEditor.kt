@@ -8,7 +8,6 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.net.Uri
-import android.os.Environment
 import android.provider.MediaStore
 import com.hendo.hendomusic.data.AppDao
 import com.hendo.hendomusic.data.TrackEntity
@@ -57,6 +56,25 @@ internal fun editedAudioName(fileName: String, now: Long): String {
     return "${base}_edited_$stamp.m4a"
 }
 
+internal fun editedAudioRelativePath(sourcePath: String?): String {
+    val normalized = sourcePath?.trim()?.trimStart('/')?.replace('\\', '/')
+    val allowedRoots = listOf(
+        "Alarms",
+        "Audiobooks",
+        "Music",
+        "Notifications",
+        "Podcasts",
+        "Recordings",
+        "Ringtones",
+    )
+    val allowed = normalized?.takeIf { path ->
+        allowedRoots.any { root -> path == root || path.startsWith("$root/", ignoreCase = true) }
+    }
+    return (allowed ?: "Music/HendoMusic/").let { path ->
+        if (path.endsWith('/')) path else "$path/"
+    }
+}
+
 /** Creates a new file only. The source URI is never opened for writing. */
 class AudioSegmentEditor(private val context: Context, private val dao: AppDao) {
     suspend fun edit(track: TrackEntity, startMs: Long, endMs: Long, mode: AudioEditMode): AudioEditResult = withContext(Dispatchers.IO) {
@@ -67,7 +85,7 @@ class AudioSegmentEditor(private val context: Context, private val dao: AppDao) 
             val resultDurationMs = mux(track, segments, temp)
             val now = System.currentTimeMillis()
             val displayName = editedAudioName(track.fileName, now)
-            val relativePath = track.relativePath?.takeIf { it.isNotBlank() } ?: "${Environment.DIRECTORY_MUSIC}/HendoMusic/"
+            val relativePath = editedAudioRelativePath(track.relativePath)
             val values = ContentValues().apply {
                 put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
                 put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")

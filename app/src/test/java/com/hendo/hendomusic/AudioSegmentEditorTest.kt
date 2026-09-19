@@ -3,6 +3,7 @@ package com.hendo.hendomusic
 import com.hendo.hendomusic.library.AudioEditMode
 import com.hendo.hendomusic.library.editSegments
 import com.hendo.hendomusic.library.editedAudioName
+import com.hendo.hendomusic.library.editedAudioRelativePath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,5 +26,11 @@ class AudioSegmentEditorTest {
         val name = editedAudioName("song.mp3", 0)
         assertTrue(name.startsWith("song_edited_"))
         assertTrue(name.endsWith(".m4a"))
+    }
+
+    @Test fun `edited files use a MediaStore allowed primary directory`() {
+        assertEquals("Music/source/", editedAudioRelativePath("Music/source"))
+        assertEquals("Music/HendoMusic/", editedAudioRelativePath("music song/"))
+        assertEquals("Music/HendoMusic/", editedAudioRelativePath(null))
     }
 }
