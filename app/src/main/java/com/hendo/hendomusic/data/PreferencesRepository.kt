@@ -30,6 +30,7 @@ data class AppSettings(
     val folderGridMode: Boolean = true,
     val folderGridColumns: Int = 2,
     val treeUris: Set<String> = emptySet(),
+    val playbackRepeatMode: Int = 0,
 )
 
 class PreferencesRepository(private val context: Context) {
@@ -53,6 +54,7 @@ class PreferencesRepository(private val context: Context) {
         val folderGridMode = booleanPreferencesKey("folder_grid_mode")
         val folderGridColumns = intPreferencesKey("folder_grid_columns")
         val trees = stringSetPreferencesKey("tree_uris")
+        val playbackRepeatMode = intPreferencesKey("playback_repeat_mode")
     }
     val settings = context.dataStore.data.map { p ->
         AppSettings(
@@ -62,7 +64,8 @@ class PreferencesRepository(private val context: Context) {
             p[Keys.sort] ?: "TITLE", p[Keys.floating] ?: false, p[Keys.lines] ?: 2,
             p[Keys.fontSize] ?: 16, p[Keys.alpha] ?: .72f, p[Keys.x] ?: 24, p[Keys.y] ?: 240,
             p[Keys.keepOn] ?: false, p[Keys.trackListening] ?: true, p[Keys.coverLyricsPreview] ?: true,
-            p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.folderGridMode] ?: true, (p[Keys.folderGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet()
+            p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.folderGridMode] ?: true, (p[Keys.folderGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet(),
+            (p[Keys.playbackRepeatMode] ?: 0).takeIf { it in 0..2 } ?: 0,
         )
     }
     suspend fun completeOnboarding() = context.dataStore.edit { it[Keys.onboarding] = true }
@@ -79,6 +82,9 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAlbumGridColumns(value: Int) = context.dataStore.edit { it[Keys.albumGridColumns] = value.coerceIn(2, 4) }
     suspend fun setFolderGridMode(value: Boolean) = context.dataStore.edit { it[Keys.folderGridMode] = value }
     suspend fun setFolderGridColumns(value: Int) = context.dataStore.edit { it[Keys.folderGridColumns] = value.coerceIn(2, 4) }
+    suspend fun setPlaybackRepeatMode(value: Int) = context.dataStore.edit {
+        it[Keys.playbackRepeatMode] = value.takeIf { mode -> mode in 0..2 } ?: 0
+    }
     suspend fun setOverlayPosition(x: Int, y: Int) = context.dataStore.edit { it[Keys.x] = x; it[Keys.y] = y }
     suspend fun addTree(uri: String) = context.dataStore.edit { it[Keys.trees] = (it[Keys.trees] ?: emptySet()) + uri }
 }

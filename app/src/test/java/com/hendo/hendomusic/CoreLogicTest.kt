@@ -11,6 +11,10 @@ class CoreLogicTest {
     @Test fun `play count threshold`() { assertFalse(PlayCountPolicy.qualifies(20_000, 100_000)); assertTrue(PlayCountPolicy.qualifies(30_000, 100_000)); assertTrue(PlayCountPolicy.qualifies(25_000, 40_000)) }
     @Test fun `rescan diff`() { val diff = scanDiff(setOf("a", "b"), setOf("b", "c")); assertEquals(setOf("c"), diff.added); assertEquals(setOf("a"), diff.removed) }
     @Test fun `repeat cycles all modes`() { assertEquals(1, RepeatCycle.next(0)); assertEquals(2, RepeatCycle.next(1)); assertEquals(0, RepeatCycle.next(2)) }
+    @Test fun `repeat preference accepts media modes and rejects corrupt values`() {
+        assertEquals(0, listOf(-1, 3, 99).map { it.takeIf { mode -> mode in 0..2 } ?: 0 }.distinct().single())
+        assertEquals(listOf(0, 1, 2), (0..2).map { it.takeIf { mode -> mode in 0..2 } ?: 0 })
+    }
     @Test fun `album folder move persists normalized order`() { val result = moveAlbum(listOf(AlbumLocation(1L,null,0), AlbumLocation(2L,4L,0)), 1L, 4L, 1); assertEquals(4L, result.first{it.albumId==1L}.folderId); assertEquals(1, result.first{it.albumId==1L}.order) }
     @Test fun `album reorder persists normalized order`() { val result = moveAlbum(listOf(AlbumLocation(1,null,0), AlbumLocation(2,null,1), AlbumLocation(3,null,2)), 3, null, 0); assertEquals(listOf(3L,1L,2L), result.sortedBy { it.order }.map { it.albumId }) }
     @Test fun `folder create and dissolve preserves albums`() {

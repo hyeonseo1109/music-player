@@ -48,6 +48,7 @@ class PlaybackService : MediaSessionService() {
     private var closeRequested = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao by lazy { (application as LuminaraApplication).container.database.dao() }
+    private val preferences by lazy { (application as LuminaraApplication).container.preferences }
     private val handler = Handler(Looper.getMainLooper())
     private val periodicSave = object : Runnable {
         override fun run() { scope.launch { persist() }; handler.postDelayed(this, 5_000) }
@@ -112,6 +113,11 @@ class PlaybackService : MediaSessionService() {
                 }
                 if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) { resetPlaybackStats(); clearLoop() }
                 if (events.contains(Player.EVENT_REPEAT_MODE_CHANGED) && loopRange != null && player.repeatMode != Player.REPEAT_MODE_OFF) clearLoop()
+                if (events.contains(Player.EVENT_REPEAT_MODE_CHANGED)) {
+                    // Repeat is a player preference, not queue data. Persist it separately so
+                    // it survives an empty queue, process death, and a later service rebuild.
+                    scope.launch { preferences.setPlaybackRepeatMode(player.repeatMode) }
+                }
                 if (events.containsAny(
                         Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
                         Player.EVENT_REPEAT_MODE_CHANGED, Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED,
@@ -288,6 +294,8 @@ class PlaybackService : MediaSessionService() {
     private suspend fun restore() = withContext(Dispatchers.IO) {
         val savedQueue = dao.queue()
         val savedSession = dao.session()
+        val repeatMode = preferences.settings.first().playbackRepeatMode
+        withContext(Dispatchers.Main) { player.repeatMode = repeatMode }
         if (savedQueue.isEmpty()) return@withContext
         val tracks = dao.tracks(savedQueue.map { it.trackId }).associateBy { it.id }
         val valid = savedQueue.mapNotNull { item -> tracks[item.trackId]?.toMediaItem(item.queueItemId) }
@@ -299,7 +307,6 @@ class PlaybackService : MediaSessionService() {
         else valid.indexOfFirst { it.mediaMetadata.extras?.getString(KEY_TRACK_ID) == wantedId }.coerceAtLeast(0)
         withContext(Dispatchers.Main) {
             player.setMediaItems(valid, index, savedSession?.positionMs ?: 0)
-            player.repeatMode = savedSession?.repeatMode ?: Player.REPEAT_MODE_OFF
             val shuffleEnabled = savedSession?.shuffleEnabled ?: false
             if (shuffleEnabled) {
                 val savedOrder = savedSession?.shuffleOrder.orEmpty().split('|').filter { it.isNotBlank() }
