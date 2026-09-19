@@ -143,11 +143,10 @@ class FloatingLyricsService : Service() {
 
     private fun updateLyricText(positionMs: Long) {
         val text: CharSequence = if (syncedLyrics.isNotEmpty()) {
-            val active = LrcCodec.activeIndex(syncedLyrics, positionMs).coerceAtLeast(0)
-            // Lines with the same stamp are one multilingual lyric block (original/pronunciation/translation).
-            val stamp = syncedLyrics[active].startTimeMs
-            val activeBlock = syncedLyrics.drop(active).takeWhile { it.startTimeMs == stamp }.map { it.text }
-            val following = syncedLyrics.drop(active + activeBlock.size).take((floatingLineCount - activeBlock.size).coerceAtLeast(0)).map { it.text }
+            val activeRange = LrcCodec.activeRange(syncedLyrics, positionMs)
+            val activeBlock = activeRange?.map { syncedLyrics[it].text }.orEmpty()
+            val followingStart = activeRange?.let { it.last + 1 } ?: 0
+            val following = syncedLyrics.drop(followingStart).take((floatingLineCount - activeBlock.size).coerceAtLeast(0)).map { it.text }
             val lines = (activeBlock + following).take(floatingLineCount)
             SpannableString(lines.joinToString("\n")).apply {
                 // 동일 타임스탬프의 1~3줄은 하나의 현재 가사 블록이다.

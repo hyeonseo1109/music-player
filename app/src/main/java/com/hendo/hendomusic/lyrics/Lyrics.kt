@@ -56,6 +56,14 @@ object LrcCodec {
             .filter { it <= positionMs }.maxOrNull() ?: return -1
         return lines.indexOfFirst { it.startTimeMs == activeStamp }
     }
+    /** All lines sharing the active timestamp form one multilingual lyric block. */
+    fun activeRange(lines: List<SyncedLyricLine>, positionMs: Long): IntRange? {
+        val first = activeIndex(lines, positionMs)
+        if (first < 0) return null
+        val stamp = lines[first].startTimeMs
+        val last = (first until lines.size).takeWhile { lines[it].startTimeMs == stamp }.lastOrNull() ?: first
+        return first..last
+    }
     fun offset(lines: List<SyncedLyricLine>, deltaMs: Long) = lines.map { it.copy(startTimeMs = (it.startTimeMs + deltaMs).coerceAtLeast(0)) }
 }
 

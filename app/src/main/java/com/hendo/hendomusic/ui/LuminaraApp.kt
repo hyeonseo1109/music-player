@@ -966,8 +966,8 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         .collectAsStateWithLifecycle(initialValue = "" to emptyList())
     Scaffold(topBar = { TopAppBar({ Text("가사") }, navigationIcon = { IconButton(back) { Icon(Icons.Default.ArrowBack, "뒤로") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            val active = LrcCodec.activeIndex(lyrics.second, positionMs)
-            DoubleTapSelectableText(if (lyrics.first.isBlank()) "등록된 가사가 없습니다." else if (lyrics.second.isEmpty()) lyrics.first else lyrics.second.mapIndexed { index, line -> if (index == active) "♪ ${line.text}" else line.text }.joinToString("\n"), style = MaterialTheme.typography.bodyLarge)
+            val activeRange = LrcCodec.activeRange(lyrics.second, positionMs)
+            DoubleTapSelectableText(if (lyrics.first.isBlank()) "등록된 가사가 없습니다." else if (lyrics.second.isEmpty()) lyrics.first else lyrics.second.mapIndexed { index, line -> if (index in (activeRange ?: IntRange.EMPTY)) "♪ ${line.text}" else line.text }.joinToString("\n"), style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -984,6 +984,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         return
     }
     val active = if (synced.isNotEmpty()) LrcCodec.activeIndex(synced, positionMs) else -1
+    val activeRange = if (synced.isNotEmpty()) LrcCodec.activeRange(synced, positionMs) else null
     Surface(modifier.fillMaxWidth().then(if (expanded) Modifier.fillMaxHeight() else Modifier.heightIn(min = if (compact) 72.dp else 96.dp, max = if (compact) 108.dp else 150.dp)).purpleGlass(18).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), color = Color.Transparent, shape = RoundedCornerShape(18.dp)) {
         if (!expanded && synced.isNotEmpty()) Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (active >= 0) {
@@ -1024,7 +1025,8 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             }
             LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 16.dp, top = if (fontScale >= 1.2f) 28.dp else 56.dp, end = 16.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(synced, key = { _, line -> line.id }) { index, line ->
-                    SelectionContainer { Text(line.text, Modifier.clickable { vm.player.seekTo(line.startTimeMs) }, color = if (index == active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (index == active) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (index == active) FontWeight.Bold else FontWeight.Normal) }
+                    val isActive = activeRange?.contains(index) == true
+                    SelectionContainer { Text(line.text, Modifier.clickable { vm.player.seekTo(line.startTimeMs) }, color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, style = if (isActive) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal) }
                 }
             }
         } else DoubleTapSelectableText(plain, Modifier.padding(16.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium)

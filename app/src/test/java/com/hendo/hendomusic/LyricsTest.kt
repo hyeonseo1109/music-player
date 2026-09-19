@@ -30,6 +30,8 @@ class LyricsTest {
         val synced = buildSyncedLyrics("track", listOf("original", "pronunciation", "meaning"), mapOf(0 to 4_200L, 1 to 4_200L, 2 to 4_200L))
         assertEquals(listOf(4_200L, 4_200L, 4_200L), synced?.map { it.startTimeMs })
         assertEquals(0, LrcCodec.activeIndex(synced.orEmpty(), 4_200L))
+        assertEquals(0..2, LrcCodec.activeRange(synced.orEmpty(), 4_200L))
+        assertEquals(null, LrcCodec.activeRange(synced.orEmpty(), 4_199L))
     }
     @Test fun `complete stamps remain savable after seeking backwards`() {
         val synced = buildSyncedLyrics("track", listOf("one", "two"), mapOf(0 to 2_000L, 1 to 1_000L))
