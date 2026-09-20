@@ -164,7 +164,7 @@ class PlaybackService : MediaSessionService() {
     private val sessionCallback = object : MediaSession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(APPEND_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).add(SessionCommand(COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)).build())
+                .setAvailableSessionCommands(SessionCommands.Builder().add(PLAY_NEXT_COMMAND).add(APPEND_COMMAND).add(TOGGLE_QUEUE_SHUFFLE_COMMAND).add(REORDER_QUEUE_COMMAND).add(SET_LOOP_COMMAND).add(CLEAR_LOOP_COMMAND).add(SessionCommand(COMMAND_STOP_PLAYBACK, android.os.Bundle.EMPTY)).add(SessionCommand(COMMAND_TOGGLE_FAVORITE, android.os.Bundle.EMPTY)).build())
                 .build()
         }
 
@@ -184,6 +184,14 @@ class PlaybackService : MediaSessionService() {
                 COMMAND_CLEAR_LOOP -> { clearLoop(); return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
                 COMMAND_TOGGLE_QUEUE_SHUFFLE -> {
                     toggleQueueShuffle()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                COMMAND_REORDER_QUEUE -> {
+                    val requested = args.getStringArrayList(ARG_QUEUE_ORDER).orEmpty()
+                    if (requested.size != player.mediaItemCount || requested.toSet().size != requested.size) {
+                        return Futures.immediateFuture(SessionResult(androidx.media3.session.SessionError.ERROR_BAD_VALUE))
+                    }
+                    reorderQueue(requested)
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 COMMAND_PLAY_NEXT, COMMAND_APPEND -> Unit
@@ -289,6 +297,38 @@ class PlaybackService : MediaSessionService() {
         }
         player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
         player.shuffleModeEnabled = shuffled
+    }
+
+    /** Applies one drag/drop transaction without rebuilding the playing MediaItem. */
+    private fun reorderQueue(requested: List<String>) {
+        val current = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        if (requested.toSet() != current.toSet()) return
+        if (player.shuffleModeEnabled) {
+            val positions = requested.map { mediaId -> current.indexOf(mediaId) }.toIntArray()
+            player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(positions, System.nanoTime()))
+            return
+        }
+        if (current == requested) return
+        val firstMismatch = current.indices.firstOrNull { current[it] != requested[it] } ?: return
+        fun moved(from: Int, to: Int): List<String> = current.toMutableList().apply { add(to, removeAt(from)) }
+        val currentCandidate = current[firstMismatch]
+        val currentDestination = requested.indexOf(currentCandidate)
+        val desiredCandidate = requested[firstMismatch]
+        val desiredSource = current.indexOf(desiredCandidate)
+        when {
+            currentDestination >= 0 && moved(firstMismatch, currentDestination) == requested ->
+                player.moveMediaItem(firstMismatch, currentDestination)
+            desiredSource >= 0 && moved(desiredSource, firstMismatch) == requested ->
+                player.moveMediaItem(desiredSource, firstMismatch)
+            else -> {
+                // Defensive fallback for a future multi-item reorder: apply only the differing
+                // positions while retaining the active MediaItem and its playback position.
+                requested.forEachIndexed { target, id ->
+                    val from = (0 until player.mediaItemCount).indexOfFirst { player.getMediaItemAt(it).mediaId == id }
+                    if (from >= 0 && from != target) player.moveMediaItem(from, target)
+                }
+            }
+        }
     }
 
     private suspend fun restore() = withContext(Dispatchers.IO) {
@@ -402,6 +442,8 @@ class PlaybackService : MediaSessionService() {
         const val COMMAND_PLAY_NEXT = "com.hendo.hendomusic.PLAY_NEXT"
         const val COMMAND_APPEND = "com.hendo.hendomusic.APPEND"
         const val COMMAND_TOGGLE_QUEUE_SHUFFLE = "com.hendo.hendomusic.TOGGLE_QUEUE_SHUFFLE"
+        const val COMMAND_REORDER_QUEUE = "com.hendo.hendomusic.REORDER_QUEUE"
+        const val ARG_QUEUE_ORDER = "queue_order"
         const val ARG_MEDIA_ITEM = "media_item"
         const val COMMAND_SET_LOOP = "com.hendo.hendomusic.SET_LOOP"
         const val COMMAND_CLEAR_LOOP = "com.hendo.hendomusic.CLEAR_LOOP"
@@ -413,6 +455,7 @@ class PlaybackService : MediaSessionService() {
         val PLAY_NEXT_COMMAND = SessionCommand(COMMAND_PLAY_NEXT, android.os.Bundle.EMPTY)
         val APPEND_COMMAND = SessionCommand(COMMAND_APPEND, android.os.Bundle.EMPTY)
         val TOGGLE_QUEUE_SHUFFLE_COMMAND = SessionCommand(COMMAND_TOGGLE_QUEUE_SHUFFLE, android.os.Bundle.EMPTY)
+        val REORDER_QUEUE_COMMAND = SessionCommand(COMMAND_REORDER_QUEUE, android.os.Bundle.EMPTY)
         val SET_LOOP_COMMAND = SessionCommand(COMMAND_SET_LOOP, android.os.Bundle.EMPTY)
         val CLEAR_LOOP_COMMAND = SessionCommand(COMMAND_CLEAR_LOOP, android.os.Bundle.EMPTY)
     }

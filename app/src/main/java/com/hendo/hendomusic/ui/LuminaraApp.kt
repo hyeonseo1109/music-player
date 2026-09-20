@@ -421,7 +421,15 @@ fun LuminaraApp(
             composable("nowLyrics/{trackId}") { back ->
                 NowPlayingLyricsScreen(back.arguments?.getString("trackId").orEmpty(), playback.positionMs, viewModel) { nav.popBackStack() }
             }
-            composable("queue") { ReorderableQueueScreen(playback, viewModel) { nav.popBackStack() } }
+            composable("queue") {
+                ReorderableQueueScreen(
+                    state = playback,
+                    viewModel = viewModel,
+                    back = { nav.popBackStack() },
+                    addToAlbum = { track -> openAlbumPicker(listOf(track)) },
+                    editTrack = { track -> nav.navigate("metadata/${track.id}") },
+                )
+            }
             composable("lyricsSearch/{trackId}") { back ->
                 val trackId = back.arguments?.getString("trackId").orEmpty()
                 ui.tracks.find { it.id == trackId }?.let { track ->
