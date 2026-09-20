@@ -118,6 +118,14 @@ fun LuminaraApp(
     val nav = rememberNavController()
     val startMainTab = ui.settings.lastMainTab.takeIf { it in setOf("library", "albums", "settings") } ?: "library"
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
+    // A library search belongs to the library visit in which it was entered. Clear it as
+    // soon as another tab or a child screen (player, queue, editor, etc.) becomes active so
+    // returning to the library always starts from the complete track list.
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != null && currentRoute != "library" && ui.query.isNotEmpty()) {
+            viewModel.setQuery("")
+        }
+    }
     // Album and folder lists keep the mini player available after leaving the full player.
     val showChrome = currentRoute !in setOf("player", "nowLyrics/{trackId}", "lyricsSearch/{trackId}", "lyrics/{trackId}", "sync/{trackId}", "metadata/{trackId}", "trim/{trackId}", "queue")
     var librarySelection by remember { mutableStateOf<LibrarySelectionUi?>(null) }
