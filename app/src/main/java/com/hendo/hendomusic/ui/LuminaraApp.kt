@@ -221,6 +221,8 @@ fun LuminaraApp(
                 var dragOffset by remember { mutableFloatStateOf(0f) }
                 var pendingTrackOrder by remember(id) { mutableStateOf<List<String>?>(null) }
                 val haptics = LocalHapticFeedback.current
+                val albumTrackListState = rememberLazyListState()
+                val albumTrackDragScope = rememberCoroutineScope()
                 LaunchedEffect(tracks, draggedTrackId, pendingTrackOrder) {
                     if (draggedTrackId != null) return@LaunchedEffect
                     val databaseOrder = tracks.map { it.id }
@@ -256,7 +258,7 @@ fun LuminaraApp(
                         remove = { id?.let { viewModel.removeFromAlbum(it, selectedIds.toList()) }; selectedIds = emptySet() },
                     )
                     if (tracks.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("이 앨범에 담긴 곡이 없습니다.") }
-                    else LazyColumn {
+                    else LazyColumn(state = albumTrackListState) {
                         itemsIndexed(localTracks, key = { _, track -> track.id }) { _, track ->
                             val dragging = draggedTrackId == track.id
                             Row(Modifier.fillMaxWidth().zIndex(if (dragging) 1f else 0f).graphicsLayer { translationY = if (dragging) dragOffset else 0f }.pointerInput(track.id, localTracks.size) {
@@ -290,7 +292,20 @@ fun LuminaraApp(
                                         if (change.position.y <= 0f) target = 0
 
                                         if (target != from) {
+                                            // A keyed LazyColumn normally keeps the old first
+                                            // item anchored. During a top-row swap that anchor
+                                            // adjustment looks like the list jumps downward.
+                                            // Preserve the viewport coordinates instead, so the
+                                            // rows move under the finger without scrolling.
+                                            val viewportIndex = albumTrackListState.firstVisibleItemIndex
+                                            val viewportOffset = albumTrackListState.firstVisibleItemScrollOffset
                                             localTracks.add(target, localTracks.removeAt(from))
+                                            albumTrackDragScope.launch {
+                                                albumTrackListState.scrollToItem(
+                                                    viewportIndex.coerceIn(0, localTracks.lastIndex),
+                                                    viewportOffset,
+                                                )
+                                            }
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         }
                                     },
