@@ -32,7 +32,10 @@ class AutoMetadataEnricher(
 
     suspend fun enrichMissing(limit: Int = 12): Int {
         val now = System.currentTimeMillis()
-        val candidates = (dao.artworkEnrichmentCandidates(limit) + dao.lyricEnrichmentCandidates(limit))
+        // Do not LIMIT before applying the in-memory retry cooldown. When the first unresolved
+        // rows were cooling down, SQL kept returning only those same rows and enrichment stopped,
+        // so later songs could be found manually but were never attempted automatically.
+        val candidates = (dao.artworkEnrichmentCandidates(Int.MAX_VALUE) + dao.lyricEnrichmentCandidates(Int.MAX_VALUE))
             .distinctBy { it.id }
             .filter { (retryAfterMs[it.id] ?: 0L) <= now }
             .take(limit)
