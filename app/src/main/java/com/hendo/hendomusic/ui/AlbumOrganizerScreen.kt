@@ -371,11 +371,18 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 @Composable fun AlbumArtworkThumbnail(album: UserAlbumEntity, viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     val artwork = album.artworkUri ?: tracks.firstOrNull()?.displayArtworkUri()
-    if (artwork.isNullOrBlank()) {
-        Box(modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0xFF62626A)), contentAlignment = Alignment.Center) {
+    var imageFailed by remember(artwork) { mutableStateOf(false) }
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0xFF62626A)), contentAlignment = Alignment.Center) {
+        if (artwork.isNullOrBlank() || imageFailed) {
             Icon(Icons.Default.MusicNote, "앨범 커버 없음", tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(24.dp))
-        }
-    } else AsyncImage(artwork, null, modifier.clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        } else AsyncImage(
+            model = artwork,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            onError = { imageFailed = true },
+        )
+    }
 }
 
 @Composable private fun FolderTile(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, dragModifier: Modifier = Modifier, click: () -> Unit, more: () -> Unit) {
@@ -393,8 +400,15 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
     }
 }
 @Composable private fun FolderArtworkGrid(folder: AlbumFolderEntity, members: List<UserAlbumEntity>, viewModel: MainViewModel, modifier: Modifier = Modifier) {
+    var customArtworkFailed by remember(folder.artworkUri) { mutableStateOf(false) }
     BoxWithConstraints(modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)) {
-        if (!folder.artworkUri.isNullOrBlank()) AsyncImage(folder.artworkUri, null, Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        if (!folder.artworkUri.isNullOrBlank() && !customArtworkFailed) AsyncImage(
+            model = folder.artworkUri,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            onError = { customArtworkFailed = true },
+        )
         else if (folder.artworkUri == "") Icon(Icons.Default.MusicNote, null, Modifier.align(Alignment.Center).size(54.dp), tint = androidx.compose.ui.graphics.Color.White)
         else if (members.isEmpty()) Icon(Icons.Default.Folder, null, Modifier.align(Alignment.Center).size(54.dp), tint = MaterialTheme.colorScheme.primary)
         else {
