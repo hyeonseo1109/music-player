@@ -83,6 +83,14 @@ class AudioSegmentEditor(private val context: Context, private val dao: AppDao) 
         var published: Uri? = null
         try {
             val resultDurationMs = mux(track, segments, temp)
+            val expectedDurationMs = segments.sumOf { it.endUs - it.startUs } / 1_000L
+            // Do not publish a file whose sample timeline does not match the chosen operation.
+            // This explicitly catches a REMOVE_SELECTION request accidentally producing only
+            // the selected range, while allowing one codec frame of boundary rounding.
+            val toleranceMs = 1_500L.coerceAtLeast(expectedDurationMs / 50L)
+            require(kotlin.math.abs(resultDurationMs - expectedDurationMs) <= toleranceMs) {
+                "편집 결과 길이가 선택한 방식과 일치하지 않습니다. 다시 시도해 주세요."
+            }
             val now = System.currentTimeMillis()
             val displayName = editedAudioName(track.fileName, now)
             val relativePath = editedAudioRelativePath(track.relativePath)
@@ -145,6 +153,10 @@ class AudioSegmentEditor(private val context: Context, private val dao: AppDao) 
                 extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
             } ?: error("오디오 트랙을 찾을 수 없습니다.")
             val format = extractor.getTrackFormat(inputTrack)
+            // The source duration describes the whole original file. Carrying it into the MP4
+            // output made some players report/play the old range even though different samples
+            // were muxed (especially when deleting a middle section).
+            format.removeKey(MediaFormat.KEY_DURATION)
             val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
             require(mime in setOf("audio/mp4a-latm", "audio/aac", "audio/mpeg", "audio/3gpp")) {
                 "${track.fileName.substringAfterLast('.', "알 수 없는 형식")} 형식은 안전한 구간 편집을 지원하지 않습니다. MP3, M4A/AAC 또는 3GP를 사용해 주세요."

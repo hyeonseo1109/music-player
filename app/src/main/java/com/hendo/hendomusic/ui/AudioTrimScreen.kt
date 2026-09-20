@@ -70,7 +70,11 @@ fun AudioTrimScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Un
                         onClick = { viewModel.editAudio(track, selection.start.roundToLong(), selection.endInclusive.roundToLong(), mode) },
                         enabled = editState !is AudioEditState.Saving && selection.endInclusive - selection.start >= 100f,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (editState is AudioEditState.Saving) "저장 중…" else "선택 구간으로 새 파일 만들기") }
+                    ) { Text(
+                        if (editState is AudioEditState.Saving) "저장 중…"
+                        else if (mode == AudioEditMode.KEEP_SELECTION) "선택 구간만 새 파일로 만들기"
+                        else "선택 구간을 삭제한 새 파일 만들기",
+                    ) }
                     TextButton(back, Modifier.fillMaxWidth()) { Text("취소") }
                 }
             }
