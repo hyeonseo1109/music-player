@@ -420,7 +420,6 @@ fun LuminaraApp(
             composable("sync/{trackId}") { back ->
                 LyricsSyncScreen(
                     trackId = back.arguments?.getString("trackId").orEmpty(),
-                    playback = playback,
                     viewModel = viewModel,
                     back = { nav.popBackStack() },
                     saved = ::returnToPlayerWithoutEditorLoop,

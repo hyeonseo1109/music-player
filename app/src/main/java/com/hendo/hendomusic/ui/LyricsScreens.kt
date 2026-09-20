@@ -16,9 +16,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import com.hendo.hendomusic.MainViewModel
 import com.hendo.hendomusic.data.TrackEntity
 import com.hendo.hendomusic.data.LyricsSource
@@ -28,8 +33,8 @@ import com.hendo.hendomusic.lyrics.LyricsSearchState
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
 import com.hendo.hendomusic.lyrics.buildSyncedLyrics
 import com.hendo.hendomusic.lyrics.canSaveSync
-import com.hendo.hendomusic.playback.PlaybackState
 import com.hendo.hendomusic.network.CommunityActionState
+import kotlinx.coroutines.delay
 
 @Composable
 fun LyricsSearchScreen(track: TrackEntity, viewModel: MainViewModel, back: () -> Unit, edit: () -> Unit) {
@@ -195,12 +200,13 @@ fun LyricsEditorScreen(trackId: String, viewModel: MainViewModel, chooseLrc: () 
 @Composable
 fun LyricsSyncScreen(
     trackId: String,
-    playback: PlaybackState,
     viewModel: MainViewModel,
     back: () -> Unit,
     saved: () -> Unit,
 ) {
+    val context = LocalContext.current
     val staged by viewModel.stagedLyrics.collectAsStateWithLifecycle()
+    val track by produceState<TrackEntity?>(null, trackId) { value = viewModel.track(trackId) }
     var lines by remember { mutableStateOf<List<String>>(emptyList()) }
     var stamps by remember { mutableStateOf<Map<Int, Long>>(emptyMap()) }
     var index by remember { mutableIntStateOf(0) }
@@ -208,24 +214,70 @@ fun LyricsSyncScreen(
     var loaded by remember { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
     var confirmBack by remember { mutableStateOf(false) }
+    var previewPositionMs by remember(trackId) { mutableLongStateOf(0L) }
+    var previewDurationMs by remember(trackId) { mutableLongStateOf(0L) }
+    var previewPlaying by remember(trackId) { mutableStateOf(false) }
+    val previewPlayer = remember(track?.uri) {
+        track?.let { selected ->
+            ExoPlayer.Builder(context).build().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                    true,
+                )
+                setMediaItem(MediaItem.fromUri(selected.uri))
+                prepare()
+                seekTo(0L)
+                playWhenReady = true
+            }
+        }
+    }
+    LaunchedEffect(trackId) {
+        // The sync editor owns an isolated preview player. The service player must not keep
+        // sounding underneath it, and editing always begins against the source from 00:00.
+        viewModel.player.pause()
+    }
+    DisposableEffect(previewPlayer) {
+        onDispose { previewPlayer?.release() }
+    }
+    LaunchedEffect(previewPlayer) {
+        val player = previewPlayer ?: return@LaunchedEffect
+        while (true) {
+            previewPositionMs = player.currentPosition.coerceAtLeast(0L)
+            previewDurationMs = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+                ?: track?.durationMs
+                ?: 0L
+            previewPlaying = player.isPlaying
+            delay(80L)
+        }
+    }
     LaunchedEffect(trackId, staged) {
         if (!loaded) {
             val existing = if (staged != null) staged!!.plainText to staged!!.syncedText?.let(LrcCodec::parse).orEmpty() else viewModel.lyrics(trackId)
             lines = existing.first.lines().filter { it.isNotBlank() }
             stamps = existing.second.take(lines.size).mapIndexed { i, line -> i to line.startTimeMs }.toMap(); loaded = true
-            // Keep the active player's position; each sync press samples the controller directly.
-            viewModel.startSyncPlayback(trackId)
         }
+    }
+    fun seekToStampedLine(targetIndex: Int) {
+        val safeIndex = targetIndex.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+        index = safeIndex
+        val targetTime = stamps[safeIndex]
+            ?: stamps.filterKeys { it <= safeIndex }.maxByOrNull { it.key }?.value
+            ?: 0L
+        previewPlayer?.seekTo(targetTime)
+        previewPositionMs = targetTime
     }
     fun leave() { if (dirty) confirmBack = true else back() }
     BackHandler(onBack = ::leave)
     Column(Modifier.fillMaxSize().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton(::leave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") }; Text("가사 싱크 편집", style = MaterialTheme.typography.titleLarge) }
-        Text("${formatLyricsTime(playback.positionMs)} / ${formatLyricsTime(playback.durationMs)}", color = MaterialTheme.colorScheme.primary)
+        Text("${formatLyricsTime(previewPositionMs)} / ${formatLyricsTime(previewDurationMs)}", color = MaterialTheme.colorScheme.primary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             val currentStart = index.coerceIn(0, lines.size)
             val currentEnd = (currentStart + groupSize).coerceAtMost(lines.size)
-            lines.subList((currentStart - groupSize).coerceAtLeast(0), currentStart).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = (currentStart - groupSize).coerceAtLeast(0) }) }
+            lines.subList((currentStart - groupSize).coerceAtLeast(0), currentStart).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { seekToStampedLine((currentStart - groupSize).coerceAtLeast(0)) }) }
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.padding(vertical = 14.dp)) {
                 Text(
                     if (currentStart == lines.size) "모든 줄의 싱크를 지정했습니다." else lines.subList(currentStart, currentEnd).joinToString("\n"),
@@ -234,19 +286,19 @@ fun LyricsSyncScreen(
                 )
             }
             if (currentStart < lines.size) stamps[currentStart]?.let { Text("지정 ${formatLyricsTime(it)}", color = MaterialTheme.colorScheme.primary) }
-            lines.subList(currentEnd, (currentEnd + groupSize).coerceAtMost(lines.size)).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { index = currentEnd }) }
+            lines.subList(currentEnd, (currentEnd + groupSize).coerceAtMost(lines.size)).forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { seekToStampedLine(currentEnd) }) }
         }
         // 싱크는 현재 재생 위치에만 기록한다. ±초 미세 조절은 제공하지 않는다.
-        FilledIconButton(viewModel.player::toggle) {
-            Icon(if (playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "재생/일시정지")
+        FilledIconButton({ previewPlayer?.let { if (it.isPlaying) it.pause() else it.play() } }) {
+            Icon(if (previewPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "재생/일시정지")
         }
         Row(verticalAlignment = Alignment.CenterVertically) { Text("한 번에"); (1..3).forEach { count -> FilterChip(groupSize == count, { groupSize = count }, { Text("${count}줄") }, Modifier.padding(start = 4.dp)) } }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton({ index = (index - groupSize).coerceAtLeast(0) }) { Text("이전") }
+            OutlinedButton({ seekToStampedLine((index - groupSize).coerceAtLeast(0)) }) { Text("이전") }
             Button({
                 if (lines.isNotEmpty() && index < lines.size) {
                     val targets = index until (index + groupSize).coerceAtMost(lines.size)
-                    val exactPosition = viewModel.currentPlaybackPositionMs()
+                    val exactPosition = previewPlayer?.currentPosition?.coerceAtLeast(0L) ?: previewPositionMs
                     stamps = stamps + targets.associateWith { exactPosition }
                     dirty = true
                     index = (index + groupSize).coerceAtMost(lines.size)
