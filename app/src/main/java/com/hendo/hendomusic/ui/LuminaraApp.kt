@@ -121,7 +121,7 @@ fun LuminaraApp(
     // A library search belongs to the library visit in which it was entered. Clear it as
     // soon as another tab or a child screen (player, queue, editor, etc.) becomes active so
     // returning to the library always starts from the complete track list.
-    LaunchedEffect(currentRoute) {
+    LaunchedEffect(currentRoute, ui.query) {
         if (currentRoute != null && currentRoute != "library" && ui.query.isNotEmpty()) {
             viewModel.setQuery("")
         }
