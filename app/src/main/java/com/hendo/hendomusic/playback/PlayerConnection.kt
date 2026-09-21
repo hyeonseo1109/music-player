@@ -164,7 +164,6 @@ class PlayerConnection(private val context: Context) {
     /** Commits the order displayed by the queue screen, including Media3 shuffle traversal. */
     fun reorderQueue(mediaIds: List<String>) {
         controller?.let { player ->
-            snapshotQueue(player)
             player.sendCustomCommand(
                 PlaybackService.REORDER_QUEUE_COMMAND,
                 Bundle().apply { putStringArrayList(PlaybackService.ARG_QUEUE_ORDER, ArrayList(mediaIds)) },
@@ -173,14 +172,12 @@ class PlayerConnection(private val context: Context) {
     }
     fun removeQueueItem(mediaId: String) {
         controller?.apply {
-            snapshotQueue(this)
             val index = (0 until mediaItemCount).indexOfFirst { getMediaItemAt(it).mediaId == mediaId }
             if (index >= 0) removeMediaItem(index)
         }
     }
     fun restoreQueueItem(item: MediaItem, displayedOrder: List<String>) {
         controller?.apply {
-            snapshotQueue(this)
             addMediaItem(item)
             sendCustomCommand(
                 PlaybackService.REORDER_QUEUE_COMMAND,
