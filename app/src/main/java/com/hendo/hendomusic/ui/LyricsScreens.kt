@@ -32,7 +32,7 @@ import com.hendo.hendomusic.lyrics.LyricsSearchResult
 import com.hendo.hendomusic.lyrics.LyricsSearchState
 import com.hendo.hendomusic.lyrics.SyncedLyricLine
 import com.hendo.hendomusic.lyrics.buildSyncedLyrics
-import com.hendo.hendomusic.lyrics.canSaveSync
+import com.hendo.hendomusic.lyrics.previousSyncedBlockStart
 import com.hendo.hendomusic.network.CommunityActionState
 import kotlinx.coroutines.delay
 
@@ -207,13 +207,13 @@ fun LyricsSyncScreen(
     val context = LocalContext.current
     val staged by viewModel.stagedLyrics.collectAsStateWithLifecycle()
     val track by produceState<TrackEntity?>(null, trackId) { value = viewModel.track(trackId) }
-    var lines by remember { mutableStateOf<List<String>>(emptyList()) }
-    var stamps by remember { mutableStateOf<Map<Int, Long>>(emptyMap()) }
-    var index by remember { mutableIntStateOf(0) }
-    var groupSize by remember { mutableIntStateOf(1) }
-    var loaded by remember { mutableStateOf(false) }
-    var dirty by remember { mutableStateOf(false) }
-    var confirmBack by remember { mutableStateOf(false) }
+    var lines by remember(trackId) { mutableStateOf<List<String>>(emptyList()) }
+    val stamps = remember(trackId) { mutableStateMapOf<Int, Long>() }
+    var index by remember(trackId) { mutableIntStateOf(0) }
+    var groupSize by remember(trackId) { mutableIntStateOf(1) }
+    var loaded by remember(trackId) { mutableStateOf(false) }
+    var dirty by remember(trackId) { mutableStateOf(false) }
+    var confirmBack by remember(trackId) { mutableStateOf(false) }
     var previewPositionMs by remember(trackId) { mutableLongStateOf(0L) }
     var previewDurationMs by remember(trackId) { mutableLongStateOf(0L) }
     var previewPlaying by remember(trackId) { mutableStateOf(false) }
@@ -257,7 +257,9 @@ fun LyricsSyncScreen(
         if (!loaded) {
             val existing = if (staged != null) staged!!.plainText to staged!!.syncedText?.let(LrcCodec::parse).orEmpty() else viewModel.lyrics(trackId)
             lines = existing.first.lines().filter { it.isNotBlank() }
-            stamps = existing.second.take(lines.size).mapIndexed { i, line -> i to line.startTimeMs }.toMap(); loaded = true
+            stamps.clear()
+            stamps.putAll(existing.second.take(lines.size).mapIndexed { i, line -> i to line.startTimeMs })
+            loaded = true
         }
     }
     fun seekToStampedLine(targetIndex: Int) {
@@ -293,18 +295,27 @@ fun LyricsSyncScreen(
             Icon(if (previewPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "재생/일시정지")
         }
         Row(verticalAlignment = Alignment.CenterVertically) { Text("한 번에"); (1..3).forEach { count -> FilterChip(groupSize == count, { groupSize = count }, { Text("${count}줄") }, Modifier.padding(start = 4.dp)) } }
+        val syncedCount = lines.indices.count(stamps::containsKey)
+        Text("${syncedCount}/${lines.size}줄 싱크 완료", color = if (syncedCount == lines.size && lines.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton({ seekToStampedLine((index - groupSize).coerceAtLeast(0)) }) { Text("이전") }
+            OutlinedButton({
+                val target = previousSyncedBlockStart(stamps, index)
+                    ?: (index - groupSize).coerceAtLeast(0)
+                seekToStampedLine(target)
+            }, enabled = index > 0) { Text("이전") }
             Button({
                 if (lines.isNotEmpty() && index < lines.size) {
                     val targets = index until (index + groupSize).coerceAtMost(lines.size)
                     val exactPosition = previewPlayer?.currentPosition?.coerceAtLeast(0L) ?: previewPositionMs
-                    stamps = stamps + targets.associateWith { exactPosition }
+                    targets.forEach { stamps[it] = exactPosition }
                     dirty = true
                     index = (index + groupSize).coerceAtMost(lines.size)
                 }
             }, Modifier.padding(horizontal = 8.dp), enabled = index < lines.size) { Text("${groupSize}줄 싱크") }
-            OutlinedButton({ index = (index + groupSize).coerceAtMost(lines.size) }) { Text("다음") }
+            OutlinedButton({
+                val target = (index + groupSize).coerceAtMost(lines.size)
+                if (target < lines.size && stamps.containsKey(target)) seekToStampedLine(target) else index = target
+            }, enabled = index < lines.size) { Text("다음") }
         }
         Button({
             buildSyncedLyrics(trackId, lines, stamps)?.let { result ->
@@ -313,7 +324,7 @@ fun LyricsSyncScreen(
                     saved()
                 }
             }
-        }, enabled = canSaveSync(lines, stamps), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
+        }, enabled = loaded && syncedCount == lines.size && lines.isNotEmpty(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("싱크 가사 저장") }
         TextButton(::leave) { Text("취소") }
     }
     if (confirmBack) AlertDialog({ confirmBack = false }, { TextButton({ confirmBack = false; back() }) { Text("나가기") } }, dismissButton = { TextButton({ confirmBack = false }) { Text("계속 편집") } }, title = { Text("변경사항을 저장하지 않고 나가시겠습니까?") })

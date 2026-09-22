@@ -2,6 +2,7 @@ package com.hendo.hendomusic
 
 import com.hendo.hendomusic.lyrics.LrcCodec
 import com.hendo.hendomusic.lyrics.buildSyncedLyrics
+import com.hendo.hendomusic.lyrics.previousSyncedBlockStart
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -39,5 +40,15 @@ class LyricsTest {
         assertEquals(-1, LrcCodec.activeIndex(synced.orEmpty(), 500L))
         assertEquals(1, LrcCodec.activeIndex(synced.orEmpty(), 1_500L))
         assertEquals(0, LrcCodec.activeIndex(synced.orEmpty(), 2_500L))
+    }
+    @Test fun `previous returns to exact stamped line instead of zero`() {
+        val stamps = mapOf(9 to 80_000L, 10 to 90_000L)
+        val target = previousSyncedBlockStart(stamps, 10)
+        assertEquals(9, target)
+        assertEquals(80_000L, stamps.getValue(target!!))
+    }
+    @Test fun `previous grouped lyrics returns to first line sharing timestamp`() {
+        val stamps = mapOf(3 to 42_000L, 4 to 42_000L, 5 to 42_000L)
+        assertEquals(3, previousSyncedBlockStart(stamps, 6))
     }
 }

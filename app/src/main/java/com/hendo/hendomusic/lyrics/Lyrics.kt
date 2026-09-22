@@ -7,6 +7,15 @@ data class SyncedLyricLine(val id: String, val startTimeMs: Long, val text: Stri
 fun canSaveSync(lines: List<String>, stamps: Map<Int, Long>): Boolean =
     lines.isNotEmpty() && lines.indices.all(stamps::containsKey)
 
+/** Returns the first line of the most recently stamped block before [currentIndex]. */
+fun previousSyncedBlockStart(stamps: Map<Int, Long>, currentIndex: Int): Int? {
+    val lastStampedIndex = stamps.keys.filter { it < currentIndex }.maxOrNull() ?: return null
+    val timestamp = stamps[lastStampedIndex] ?: return null
+    var first = lastStampedIndex
+    while (first > 0 && stamps[first - 1] == timestamp) first--
+    return first
+}
+
 /**
  * Builds a timeline only after every displayed lyric line has an explicit timestamp.
  * Filling a skipped line with 00:00 (or a neighbour's time) made the player focus the wrong
