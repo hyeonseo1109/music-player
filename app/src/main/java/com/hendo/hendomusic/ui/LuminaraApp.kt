@@ -564,7 +564,10 @@ private fun AlbumContentPickerScreen(ui: MainUiState, vm: MainViewModel, title: 
         selectedIds = if (track.id in selectedIds) selectedIds - track.id else selectedIds + track.id
     }
     fun playSelectedTracks() {
-        selectedTracks.firstOrNull()?.let { vm.play(it, selectedTracks) }
+        selectedTracks.firstOrNull()?.let {
+            vm.play(it, selectedTracks)
+            nav.navigate("player") { launchSingleTop = true }
+        }
         selectedIds = emptySet()
     }
     LaunchedEffect(selectedTracks) {
@@ -609,7 +612,12 @@ private fun AlbumContentPickerScreen(ui: MainUiState, vm: MainViewModel, title: 
             MusicRow(
                 track = track,
                 selected = track.id in selectedIds,
-                play = { if (selectedIds.isEmpty()) vm.play(track, ui.visibleTracks) else toggleSelection(track) },
+                play = {
+                    if (selectedIds.isEmpty()) {
+                        vm.play(track, ui.visibleTracks)
+                        nav.navigate("player") { launchSingleTop = true }
+                    } else toggleSelection(track)
+                },
                 select = { toggleSelection(track) },
                 menu = { menuTrack = track },
                 menuOnLeft = ui.settings.sort == "TITLE",
@@ -801,7 +809,12 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     var removeConfirm by remember { mutableStateOf(false) }
     ModalBottomSheet(close) { Column(Modifier.padding(bottom = 28.dp)) {
         ListItem(headlineContent = { Text(track.title, fontWeight = FontWeight.Bold) }, supportingContent = { Text(track.artist) }, leadingContent = { Artwork(track.displayArtworkUri(), 48) })
-        MenuLine(Icons.Default.PlayArrow, "듣기") { vm.play(track, playQueue); afterPlay(); close() }
+        MenuLine(Icons.Default.PlayArrow, "듣기") {
+            vm.play(track, playQueue)
+            afterPlay()
+            close()
+            nav.navigate("player") { launchSingleTop = true }
+        }
         MenuLine(Icons.Default.SkipNext, "다음 곡으로 재생") { vm.player.playNext(track); close() }
         MenuLine(Icons.Default.PlaylistAdd, "현재 재생목록에 추가") { vm.player.append(track); close() }
         MenuLine(Icons.Default.Album, "내 앨범에 추가") { openAlbumPicker(listOf(track)); close() }
