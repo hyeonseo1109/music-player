@@ -297,7 +297,11 @@ fun LyricsSyncScreen(
         Row(verticalAlignment = Alignment.CenterVertically) { Text("한 번에"); (1..3).forEach { count -> FilterChip(groupSize == count, { groupSize = count }, { Text("${count}줄") }, Modifier.padding(start = 4.dp)) } }
         val syncedCount = lines.indices.count(stamps::containsKey)
         Text("${syncedCount}/${lines.size}줄 싱크 완료", color = if (syncedCount == lines.size && lines.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             OutlinedButton({
                 val target = previousSyncedBlockStart(stamps, index)
                     ?: (index - groupSize).coerceAtLeast(0)
@@ -311,10 +315,6 @@ fun LyricsSyncScreen(
                     dirty = true
                     index = (index + groupSize).coerceAtMost(lines.size)
                 }
-            }, Modifier.padding(horizontal = 8.dp), enabled = index < lines.size) { Text("${groupSize}줄 싱크") }
-            OutlinedButton({
-                val target = (index + groupSize).coerceAtMost(lines.size)
-                if (target < lines.size && stamps.containsKey(target)) seekToStampedLine(target) else index = target
             }, enabled = index < lines.size) { Text("다음") }
         }
         Button({
