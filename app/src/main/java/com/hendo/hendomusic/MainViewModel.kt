@@ -145,6 +145,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeepScreenOn(value: Boolean) = viewModelScope.launch { container.preferences.setKeepScreenOn(value) }
     fun setTrackListening(value: Boolean) = viewModelScope.launch { container.preferences.setTrackListening(value) }
     fun setCoverLyricsPreview(value: Boolean) = viewModelScope.launch { container.preferences.setCoverLyricsPreview(value) }
+    fun setOpenPlayerOnPlay(value: Boolean) = viewModelScope.launch { container.preferences.setOpenPlayerOnPlay(value) }
     fun setLastMainTab(value: String) = viewModelScope.launch { container.preferences.setLastMainTab(value) }
     fun setAlbumGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setAlbumGridMode(value) }
     fun setAlbumGridColumns(value: Int) = viewModelScope.launch { container.preferences.setAlbumGridColumns(value) }
