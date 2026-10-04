@@ -59,6 +59,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as LuminaraApplication).container
     private val dao = container.database.dao()
     val player = PlayerConnection(application)
+    val ambientPaletteRepository = container.ambientPaletteRepository
     private val artworkRepository = ArtworkRepository(application)
     private val audioSegmentEditor = AudioSegmentEditor(application, dao)
     private val mutableAudioEdit = MutableStateFlow<AudioEditState>(AudioEditState.Idle)
@@ -146,6 +147,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setTrackListening(value: Boolean) = viewModelScope.launch { container.preferences.setTrackListening(value) }
     fun setCoverLyricsPreview(value: Boolean) = viewModelScope.launch { container.preferences.setCoverLyricsPreview(value) }
     fun setOpenPlayerOnPlay(value: Boolean) = viewModelScope.launch { container.preferences.setOpenPlayerOnPlay(value) }
+    fun setAmbientLightEnabled(value: Boolean) = viewModelScope.launch { container.preferences.setAmbientLightEnabled(value) }
     fun setLastMainTab(value: String) = viewModelScope.launch { container.preferences.setLastMainTab(value) }
     fun setAlbumGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setAlbumGridMode(value) }
     fun setAlbumGridColumns(value: Int) = viewModelScope.launch { container.preferences.setAlbumGridColumns(value) }

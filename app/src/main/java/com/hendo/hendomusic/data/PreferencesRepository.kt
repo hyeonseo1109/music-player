@@ -32,6 +32,7 @@ data class AppSettings(
     val treeUris: Set<String> = emptySet(),
     val playbackRepeatMode: Int = 0,
     val openPlayerOnPlay: Boolean = true,
+    val ambientLightEnabled: Boolean = false,
 )
 
 class PreferencesRepository(private val context: Context) {
@@ -57,6 +58,7 @@ class PreferencesRepository(private val context: Context) {
         val trees = stringSetPreferencesKey("tree_uris")
         val playbackRepeatMode = intPreferencesKey("playback_repeat_mode")
         val openPlayerOnPlay = booleanPreferencesKey("open_player_on_play")
+        val ambientLightEnabled = booleanPreferencesKey("ambient_light_enabled")
     }
     val settings = context.dataStore.data.map { p ->
         AppSettings(
@@ -69,6 +71,7 @@ class PreferencesRepository(private val context: Context) {
             p[Keys.lastMainTab] ?: "library", p[Keys.albumGridMode] ?: true, (p[Keys.albumGridColumns] ?: 2).coerceIn(2, 4), p[Keys.folderGridMode] ?: true, (p[Keys.folderGridColumns] ?: 2).coerceIn(2, 4), p[Keys.trees] ?: emptySet(),
             (p[Keys.playbackRepeatMode] ?: 0).takeIf { it in 0..2 } ?: 0,
             p[Keys.openPlayerOnPlay] ?: true,
+            p[Keys.ambientLightEnabled] ?: false,
         )
     }
     suspend fun completeOnboarding() = context.dataStore.edit { it[Keys.onboarding] = true }
@@ -89,6 +92,7 @@ class PreferencesRepository(private val context: Context) {
         it[Keys.playbackRepeatMode] = value.takeIf { mode -> mode in 0..2 } ?: 0
     }
     suspend fun setOpenPlayerOnPlay(value: Boolean) = context.dataStore.edit { it[Keys.openPlayerOnPlay] = value }
+    suspend fun setAmbientLightEnabled(value: Boolean) = context.dataStore.edit { it[Keys.ambientLightEnabled] = value }
     suspend fun setOverlayPosition(x: Int, y: Int) = context.dataStore.edit { it[Keys.x] = x; it[Keys.y] = y }
     suspend fun addTree(uri: String) = context.dataStore.edit { it[Keys.trees] = (it[Keys.trees] ?: emptySet()) + uri }
 }

@@ -191,6 +191,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onStart() {
         super.onStart(); viewModel.player.connect()
+        startService(Intent(this, com.hendo.hendomusic.playback.PlaybackService::class.java).setAction(com.hendo.hendomusic.playback.PlaybackService.ACTION_REFRESH_AMBIENT))
         stopService(Intent(this, FloatingLyricsService::class.java))
     }
     override fun onStop() {

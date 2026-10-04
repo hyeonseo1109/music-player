@@ -1,6 +1,9 @@
 package com.hendo.hendomusic.playback
 
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,6 +12,8 @@ import android.widget.RemoteViews
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.provider.Settings
+import android.os.PowerManager
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -21,6 +26,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaNotification
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionCommands
@@ -35,8 +41,11 @@ import com.hendo.hendomusic.data.PlaybackHistoryEntity
 import com.hendo.hendomusic.data.displayArtworkUri
 import com.hendo.hendomusic.domain.LoopRange
 import com.hendo.hendomusic.domain.LoopRangePolicy
+import com.hendo.hendomusic.ambient.AmbientOverlayController
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.UUID
 import java.util.Locale
 
@@ -45,6 +54,15 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaSession
     private lateinit var notificationProvider: HendoNotificationProvider
+    private lateinit var ambientOverlay: AmbientOverlayController
+    private var ambientLightEnabled = false
+    private var screenInteractive = true
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            screenInteractive = intent?.action != Intent.ACTION_SCREEN_OFF
+            syncAmbientOverlay()
+        }
+    }
     private var closeRequested = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val dao by lazy { (application as LuminaraApplication).container.database.dao() }
@@ -97,6 +115,18 @@ class PlaybackService : MediaSessionService() {
         // progress is a snapshot, so notificationProgressTicker refreshes it only while playing.
         notificationProvider = HendoNotificationProvider(this)
         setMediaNotificationProvider(notificationProvider)
+        ambientOverlay = AmbientOverlayController(
+            this,
+            (application as LuminaraApplication).container.ambientPaletteRepository,
+            scope,
+        )
+        screenInteractive = getSystemService(PowerManager::class.java).isInteractive
+        ContextCompat.registerReceiver(
+            this,
+            screenReceiver,
+            IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF) },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         player.addListener(object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (loopSeekPending) { loopSeekPending = false; return }
@@ -128,8 +158,19 @@ class PlaybackService : MediaSessionService() {
                         Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
                         Player.EVENT_POSITION_DISCONTINUITY,
                     )) handler.post { if (!closeRequested) notificationProvider.refresh(session) }
+                if (events.containsAny(
+                        Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_IS_PLAYING_CHANGED,
+                        Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_MEDIA_METADATA_CHANGED,
+                        Player.EVENT_TIMELINE_CHANGED,
+                    )) syncAmbientOverlay()
             }
         })
+        scope.launch {
+            preferences.settings.map { it.ambientLightEnabled }.distinctUntilChanged().collect { enabled ->
+                ambientLightEnabled = enabled
+                syncAmbientOverlay()
+            }
+        }
         scope.launch { restore() }
         handler.post(periodicSave)
         handler.post(statsTicker)
@@ -144,6 +185,10 @@ class PlaybackService : MediaSessionService() {
             closePlayback()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_REFRESH_AMBIENT) {
+            syncAmbientOverlay()
+            return START_NOT_STICKY
+        }
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -153,12 +198,23 @@ class PlaybackService : MediaSessionService() {
         closeRequested = true
         handler.removeCallbacks(notificationProgressTicker)
         notificationProvider.dismiss()
+        ambientOverlay.hide()
         stopForeground(STOP_FOREGROUND_REMOVE)
         player.pause()
         player.stop()
         player.clearMediaItems()
         notificationProvider.dismiss()
         stopSelf()
+    }
+
+    private fun syncAmbientOverlay() {
+        if (!::ambientOverlay.isInitialized) return
+        val item = player.currentMediaItem
+        if (ambientLightEnabled && screenInteractive && !closeRequested && player.isPlaying && item != null && Settings.canDrawOverlays(this)) {
+            ambientOverlay.show(item.mediaMetadata.artworkUri?.toString())
+        } else {
+            ambientOverlay.hide()
+        }
     }
 
     private val sessionCallback = object : MediaSession.Callback {
@@ -431,6 +487,8 @@ class PlaybackService : MediaSessionService() {
         handler.removeCallbacks(statsTicker)
         handler.removeCallbacks(notificationProgressTicker)
         handler.removeCallbacks(loopTicker)
+        ambientOverlay.destroy()
+        runCatching { unregisterReceiver(screenReceiver) }
         runBlocking { persist() }
         session.release(); player.release(); scope.cancel(); super.onDestroy()
     }
@@ -449,6 +507,7 @@ class PlaybackService : MediaSessionService() {
         const val COMMAND_CLEAR_LOOP = "com.hendo.hendomusic.CLEAR_LOOP"
         const val COMMAND_STOP_PLAYBACK = "com.hendo.hendomusic.STOP_PLAYBACK"
         const val ACTION_CLOSE_PLAYBACK = "com.hendo.hendomusic.action.CLOSE_PLAYBACK"
+        const val ACTION_REFRESH_AMBIENT = "com.hendo.hendomusic.action.REFRESH_AMBIENT"
         const val COMMAND_TOGGLE_FAVORITE = "com.hendo.hendomusic.TOGGLE_FAVORITE"
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
