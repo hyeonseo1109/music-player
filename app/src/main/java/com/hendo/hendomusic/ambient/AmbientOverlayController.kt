@@ -202,6 +202,28 @@ private class AmbientOverlayView(context: Context) : View(context) {
             )
             val color = animatedTone(sourceColor, pulse)
             val alpha = (AmbientOverlaySpec.CORE_ALPHA[index] * (.72f + pulse * .28f)).toInt()
+            // A low-luminance chromatic bed makes the light readable on white and pastel apps.
+            // On an already dark surface it contributes almost no visible brightness, preserving
+            // the existing dark-screen appearance while increasing contrast only where needed.
+            val contrastRadius = radius * 1.08f
+            val contrastAlpha = (92f * (.76f + pulse * .24f)).toInt()
+            val contrastColor = contrastTone(sourceColor)
+            paint.shader = RadialGradient(
+                centerX,
+                centerY,
+                contrastRadius,
+                intArrayOf(
+                    withAlpha(contrastColor, contrastAlpha),
+                    withAlpha(contrastColor, contrastAlpha / 2),
+                    Color.TRANSPARENT,
+                ),
+                floatArrayOf(0f, .52f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.save()
+            canvas.scale(scaleX * 1.04f, scaleY * 1.08f, centerX, centerY)
+            canvas.drawCircle(centerX, centerY, contrastRadius, paint)
+            canvas.restore()
             paint.shader = RadialGradient(
                 centerX,
                 centerY,
@@ -240,6 +262,14 @@ private class AmbientOverlayView(context: Context) : View(context) {
             hsv[1] = (hsv[1] * (.82f + phase * .25f) + .04f + phase * .05f).coerceIn(.12f, .86f)
         }
         hsv[2] = (hsv[2] * (.74f + phase * .34f)).coerceIn(.18f, .98f)
+        return Color.HSVToColor(hsv)
+    }
+
+    private fun contrastTone(color: Int): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[1] = (hsv[1] * 1.12f + .12f).coerceIn(.30f, .90f)
+        hsv[2] = (hsv[2] * .20f).coerceIn(.08f, .16f)
         return Color.HSVToColor(hsv)
     }
 
