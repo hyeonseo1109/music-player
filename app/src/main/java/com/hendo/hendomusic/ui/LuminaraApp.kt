@@ -3,6 +3,7 @@
 package com.hendo.hendomusic.ui
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1101,7 +1102,20 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         item { Section("테마"); Row(Modifier.padding(horizontal = 16.dp)) { ThemeMode.entries.forEach { mode -> FilterChip(mode == ui.settings.theme, { vm.setTheme(mode) }, { Text(when(mode){ThemeMode.DARK->"다크";ThemeMode.LIGHT->"라이트";ThemeMode.SYSTEM->"시스템"}) }, Modifier.padding(4.dp)) } } }
         item { Section("재생"); SwitchLine("음악 재생 시 상세화면 자동 열기", ui.settings.openPlayerOnPlay, vm::setOpenPlayerOnPlay); SwitchLine("앨범커버 모드 가사 미리보기", ui.settings.coverLyricsPreview, vm::setCoverLyricsPreview); SwitchLine("많이 들은 곡 기록", ui.settings.trackListening, vm::setTrackListening) }
         item { Section("화면"); SwitchLine("앱을 보는 동안 화면 켜기", ui.settings.keepScreenOn, vm::setKeepScreenOn) }
-        item { Section("Ambient Light"); Text("재생 중인 앨범아트 색상으로 다른 앱 위에도 상단 조명을 표시합니다.", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall); SwitchLine("Ambient Light", ui.settings.ambientLightEnabled) { enabled -> if (enabled && !Settings.canDrawOverlays(context)) requestOverlay(); vm.setAmbientLightEnabled(enabled) } }
+        item {
+            Section("Ambient Light")
+            Text("재생 중인 앨범아트 색상으로 다른 앱 위에도 상단 조명을 표시합니다.", Modifier.padding(horizontal = 20.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            SwitchLine("Ambient Light", ui.settings.ambientLightEnabled) { enabled ->
+                if (enabled && !Settings.canDrawOverlays(context)) requestOverlay()
+                vm.setAmbientLightEnabled(enabled)
+            }
+            SettingLine(Icons.Default.Screenshot, "캡처 준비", "앰비언스를 2초 동안 숨긴 뒤 자동으로 다시 표시합니다") {
+                context.startService(
+                    Intent(context, com.hendo.hendomusic.playback.PlaybackService::class.java)
+                        .setAction(com.hendo.hendomusic.playback.PlaybackService.ACTION_SUPPRESS_AMBIENT_FOR_CAPTURE),
+                )
+            }
+        }
         item { Section("권한"); SettingLine(Icons.Default.AudioFile, "음악 및 알림 권한", if(hasAudioPermission(context)) "허용됨" else "권한 필요", requestMedia); SettingLine(Icons.Default.PictureInPicture, "다른 앱 위에 표시", if(Settings.canDrawOverlays(context)) "허용됨" else "권한 필요", requestOverlay) }
         item { Section("내 앨범 데이터"); SettingLine(Icons.Default.Sync, "삼성뮤직 공개 재생목록 동기화", "Android에서 공개한 재생목록을 내 앨범으로 가져옵니다", vm::importPublicPlaylists); SettingLine(Icons.Default.FileUpload, "내 앨범 가져오기", "Samsung SMPL / M3U / M3U8 / PLS 파일 선택", choosePlaylist); SettingLine(Icons.Default.FileDownload, "내 앨범 내보내기", "선택한 내 앨범을 M3U로 저장") { exportSheet = true } }
         item { Section("데이터"); SettingLine(Icons.Default.FileUpload, "LRC·앱 데이터 백업/복원", "가사 화면의 LRC 가져오기/내보내기와 Android 자동 백업 지원") {} }

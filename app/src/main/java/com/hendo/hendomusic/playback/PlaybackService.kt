@@ -68,6 +68,11 @@ class PlaybackService : MediaSessionService() {
     private val dao by lazy { (application as LuminaraApplication).container.database.dao() }
     private val preferences by lazy { (application as LuminaraApplication).container.preferences }
     private val handler = Handler(Looper.getMainLooper())
+    private var ambientSuppressedForCapture = false
+    private val restoreAmbientAfterCapture = Runnable {
+        ambientSuppressedForCapture = false
+        syncAmbientOverlay()
+    }
     private val periodicSave = object : Runnable {
         override fun run() { scope.launch { persist() }; handler.postDelayed(this, 5_000) }
     }
@@ -189,7 +194,18 @@ class PlaybackService : MediaSessionService() {
             syncAmbientOverlay()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_SUPPRESS_AMBIENT_FOR_CAPTURE) {
+            suppressAmbientForCapture()
+            return START_NOT_STICKY
+        }
         return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun suppressAmbientForCapture() {
+        ambientSuppressedForCapture = true
+        handler.removeCallbacks(restoreAmbientAfterCapture)
+        ambientOverlay.hide()
+        handler.postDelayed(restoreAmbientAfterCapture, AMBIENT_CAPTURE_SUPPRESSION_MS)
     }
 
     private fun closePlayback() {
@@ -210,7 +226,7 @@ class PlaybackService : MediaSessionService() {
     private fun syncAmbientOverlay() {
         if (!::ambientOverlay.isInitialized) return
         val item = player.currentMediaItem
-        if (ambientLightEnabled && screenInteractive && !closeRequested && player.isPlaying && item != null && Settings.canDrawOverlays(this)) {
+        if (ambientLightEnabled && !ambientSuppressedForCapture && screenInteractive && !closeRequested && player.isPlaying && item != null && Settings.canDrawOverlays(this)) {
             ambientOverlay.show(item.mediaMetadata.artworkUri?.toString())
         } else {
             ambientOverlay.hide()
@@ -487,6 +503,7 @@ class PlaybackService : MediaSessionService() {
         handler.removeCallbacks(statsTicker)
         handler.removeCallbacks(notificationProgressTicker)
         handler.removeCallbacks(loopTicker)
+        handler.removeCallbacks(restoreAmbientAfterCapture)
         ambientOverlay.destroy()
         runCatching { unregisterReceiver(screenReceiver) }
         runBlocking { persist() }
@@ -508,6 +525,8 @@ class PlaybackService : MediaSessionService() {
         const val COMMAND_STOP_PLAYBACK = "com.hendo.hendomusic.STOP_PLAYBACK"
         const val ACTION_CLOSE_PLAYBACK = "com.hendo.hendomusic.action.CLOSE_PLAYBACK"
         const val ACTION_REFRESH_AMBIENT = "com.hendo.hendomusic.action.REFRESH_AMBIENT"
+        const val ACTION_SUPPRESS_AMBIENT_FOR_CAPTURE = "com.hendo.hendomusic.action.SUPPRESS_AMBIENT_FOR_CAPTURE"
+        private const val AMBIENT_CAPTURE_SUPPRESSION_MS = 2_000L
         const val COMMAND_TOGGLE_FAVORITE = "com.hendo.hendomusic.TOGGLE_FAVORITE"
         const val ARG_LOOP_START = "loop_start"
         const val ARG_LOOP_END = "loop_end"
