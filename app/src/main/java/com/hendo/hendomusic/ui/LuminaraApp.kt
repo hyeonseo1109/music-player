@@ -3,7 +3,6 @@
 package com.hendo.hendomusic.ui
 
 import android.Manifest
-import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -1108,12 +1107,6 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
             SwitchLine("Ambient Light", ui.settings.ambientLightEnabled) { enabled ->
                 if (enabled && !Settings.canDrawOverlays(context)) requestOverlay()
                 vm.setAmbientLightEnabled(enabled)
-            }
-            SettingLine(Icons.Default.Screenshot, "캡처 준비", "앰비언스를 2초 동안 숨긴 뒤 자동으로 다시 표시합니다") {
-                context.startService(
-                    Intent(context, com.hendo.hendomusic.playback.PlaybackService::class.java)
-                        .setAction(com.hendo.hendomusic.playback.PlaybackService.ACTION_SUPPRESS_AMBIENT_FOR_CAPTURE),
-                )
             }
         }
         item { Section("권한"); SettingLine(Icons.Default.AudioFile, "음악 및 알림 권한", if(hasAudioPermission(context)) "허용됨" else "권한 필요", requestMedia); SettingLine(Icons.Default.PictureInPicture, "다른 앱 위에 표시", if(Settings.canDrawOverlays(context)) "허용됨" else "권한 필요", requestOverlay) }
