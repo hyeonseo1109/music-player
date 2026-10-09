@@ -548,7 +548,14 @@ private class HendoNotificationProvider(private val appContext: android.content.
             val manager = appContext.getSystemService(NotificationManager::class.java)
             // A playback card should remain in the shade/status area without interrupting the
             // app every time a restored session posts its first notification.
-            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "HendoMusic 재생", NotificationManager.IMPORTANCE_LOW))
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "HendoMusic 재생", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+                    setSound(null, null)
+                    enableVibration(false)
+                    setShowBadge(false)
+                }
+            )
         }
     }
 
@@ -637,10 +644,30 @@ private class HendoNotificationProvider(private val appContext: android.content.
             artworkUri = artworkUri,
             session = session,
         )
+        // The public version deliberately reuses the exact same compact/expanded RemoteViews.
+        // Android or One UI may still collapse it on the lock screen, but no system MediaStyle
+        // or full-screen artwork is introduced by the app.
+        val publicNotification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(com.hendo.hendomusic.R.drawable.ic_notification_status)
+            .setContentTitle(metadata.title ?: "HendoMusic")
+            .setContentText(metadata.artist ?: "알 수 없는 아티스트")
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCustomContentView(compactViews)
+            .setCustomBigContentView(views)
+            .build()
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             // Android requires a small icon, but this transparent glyph avoids a second
             // visible app icon in the custom player card.
             .setSmallIcon(com.hendo.hendomusic.R.drawable.ic_notification_status)
+            .setContentTitle(metadata.title ?: "HendoMusic")
+            .setContentText(metadata.artist ?: "알 수 없는 아티스트")
             .setContentIntent(contentIntent)
             // Clearing/swiping the card must not stop playback. Only the visible X action
             // above is wired to ACTION_CLOSE_PLAYBACK.
@@ -648,9 +675,12 @@ private class HendoNotificationProvider(private val appContext: android.content.
             // This also prevents Android's generic clear-all from dropping an active session.
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPublicVersion(publicNotification)
             .setCustomContentView(compactViews)
             .setCustomBigContentView(views)
             .build()
@@ -702,7 +732,9 @@ private class HendoNotificationProvider(private val appContext: android.content.
     private companion object {
         // Channel importance is immutable after creation, so use a new id to move existing
         // installs away from the previous heads-up/high-priority channel.
-        const val CHANNEL_ID = "hendo_playback_silent_v3"
+        // Samsung hides LOW-importance ongoing cards from its lock screen. This silent DEFAULT
+        // channel is non-heads-up but remains eligible for the public lock-screen notification.
+        const val CHANNEL_ID = "hendo_playback_public_v5"
         const val NOTIFICATION_ID = 1001
     }
 
