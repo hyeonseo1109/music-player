@@ -90,6 +90,7 @@ private data class LibrarySelectionUi(
 @Composable
 fun LuminaraApp(
     viewModel: MainViewModel,
+    openPlayerRequest: Int,
     requestMediaPermission: () -> Unit,
     requestOnboardingPermission: (String, (Boolean) -> Unit) -> Unit,
     requestOverlay: () -> Unit,
@@ -116,6 +117,9 @@ fun LuminaraApp(
         return
     }
     val nav = rememberNavController()
+    LaunchedEffect(openPlayerRequest) {
+        if (openPlayerRequest > 0) nav.navigate("player") { launchSingleTop = true }
+    }
     val startMainTab = ui.settings.lastMainTab.takeIf { it in setOf("library", "albums", "settings") } ?: "library"
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
     // A library search belongs to the library visit in which it was entered. Clear it as

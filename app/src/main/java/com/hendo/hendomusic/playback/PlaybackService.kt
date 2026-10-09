@@ -4,14 +4,21 @@ import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.widget.RemoteViews
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.LruCache
+import android.view.View
 import android.provider.Settings
 import android.os.PowerManager
 import androidx.core.net.toUri
@@ -48,6 +55,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.UUID
 import java.util.Locale
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import kotlin.math.min
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -488,6 +499,7 @@ class PlaybackService : MediaSessionService() {
         handler.removeCallbacks(notificationProgressTicker)
         handler.removeCallbacks(loopTicker)
         ambientOverlay.destroy()
+        notificationProvider.release()
         runCatching { unregisterReceiver(screenReceiver) }
         runBlocking { persist() }
         session.release(); player.release(); scope.cancel(); super.onDestroy()
@@ -526,6 +538,11 @@ private class HendoNotificationProvider(private val appContext: android.content.
     private var lastActionFactory: MediaNotification.ActionFactory? = null
     private var lastCallback: MediaNotification.Provider.Callback? = null
     private var dismissed = false
+    private val artworkScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val artworkRequests = mutableSetOf<String>()
+    private val artworkCache = object : LruCache<String, Bitmap>(4 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
     init {
         if (Build.VERSION.SDK_INT >= 26) {
             val manager = appContext.getSystemService(NotificationManager::class.java)
@@ -548,7 +565,10 @@ private class HendoNotificationProvider(private val appContext: android.content.
         // Player.mediaMetadata is playlist-level metadata and does not carry a track's
         // favorite bit. The current item's metadata is the source of truth for this card.
         val metadata = player.currentMediaItem?.mediaMetadata ?: player.mediaMetadata
-        val launch = Intent(appContext, com.hendo.hendomusic.MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+        val launch = Intent(appContext, com.hendo.hendomusic.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(com.hendo.hendomusic.MainActivity.EXTRA_OPEN_PLAYER, true)
+        }
         val contentIntent = PendingIntent.getActivity(appContext, 2001, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val previous = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, android.R.drawable.ic_media_previous), "이전 곡", Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
         val playPause = actionFactory.createMediaAction(session, IconCompat.createWithResource(appContext, if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play), if (player.isPlaying) "일시정지" else "재생", Player.COMMAND_PLAY_PAUSE)
@@ -562,28 +582,61 @@ private class HendoNotificationProvider(private val appContext: android.content.
         )
         val duration = player.duration.takeIf { it > 0 } ?: 0L
         val favoriteOn = metadata.extras?.getBoolean(PlaybackService.KEY_FAVORITE, false) == true
+        val artworkUri = metadata.artworkUri?.toString()
+        val nightMode = appContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val primaryColor = if (nightMode) Color.WHITE else Color.rgb(28, 28, 30)
+        val secondaryColor = if (nightMode) Color.argb(220, 255, 255, 255) else Color.rgb(78, 78, 82)
         Log.d("HendoNotification", "render position=${player.currentPosition} duration=$duration playing=${player.isPlaying} favorite=$favoriteOn")
         val views = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player).apply {
             setTextViewText(com.hendo.hendomusic.R.id.notification_title, metadata.title ?: "HendoMusic")
             setTextViewText(com.hendo.hendomusic.R.id.notification_artist, metadata.artist ?: "알 수 없는 아티스트")
+            setTextColor(com.hendo.hendomusic.R.id.notification_title, primaryColor)
+            setTextColor(com.hendo.hendomusic.R.id.notification_artist, secondaryColor)
             setProgressBar(com.hendo.hendomusic.R.id.notification_progress, duration.coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), player.currentPosition.coerceIn(0L, duration).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), false)
             setTextViewText(com.hendo.hendomusic.R.id.notification_elapsed, formatNotificationTime(player.currentPosition))
             setTextViewText(com.hendo.hendomusic.R.id.notification_duration, formatNotificationTime(duration))
+            setTextColor(com.hendo.hendomusic.R.id.notification_elapsed, secondaryColor)
+            setTextColor(com.hendo.hendomusic.R.id.notification_duration, secondaryColor)
             setImageViewResource(com.hendo.hendomusic.R.id.notification_play_pause, if (player.isPlaying) com.hendo.hendomusic.R.drawable.ic_notification_pause else com.hendo.hendomusic.R.drawable.ic_notification_play)
             setImageViewResource(com.hendo.hendomusic.R.id.notification_favorite, if (favoriteOn) com.hendo.hendomusic.R.drawable.ic_notification_heart else com.hendo.hendomusic.R.drawable.ic_notification_heart_outline)
+            listOf(
+                com.hendo.hendomusic.R.id.notification_previous,
+                com.hendo.hendomusic.R.id.notification_play_pause,
+                com.hendo.hendomusic.R.id.notification_next,
+                com.hendo.hendomusic.R.id.notification_favorite,
+                com.hendo.hendomusic.R.id.notification_close,
+            ).forEach { setInt(it, "setColorFilter", primaryColor) }
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_previous, previous.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_play_pause, playPause.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_next, next.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_favorite, favorite.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_close, close)
         }
+        bindArtwork(
+            views = views,
+            artworkViewId = com.hendo.hendomusic.R.id.notification_artwork,
+            placeholderViewId = com.hendo.hendomusic.R.id.notification_artwork_placeholder,
+            artworkUri = artworkUri,
+            session = session,
+        )
         val compactViews = RemoteViews(appContext.packageName, com.hendo.hendomusic.R.layout.notification_hendo_player_compact).apply {
             setTextViewText(com.hendo.hendomusic.R.id.notification_compact_title, metadata.title ?: "Music")
             setTextViewText(com.hendo.hendomusic.R.id.notification_compact_artist, metadata.artist ?: "알 수 없는 아티스트")
+            setTextColor(com.hendo.hendomusic.R.id.notification_compact_title, primaryColor)
+            setTextColor(com.hendo.hendomusic.R.id.notification_compact_artist, secondaryColor)
             setImageViewResource(com.hendo.hendomusic.R.id.notification_compact_play_pause, if (player.isPlaying) com.hendo.hendomusic.R.drawable.ic_notification_pause else com.hendo.hendomusic.R.drawable.ic_notification_play)
+            setInt(com.hendo.hendomusic.R.id.notification_compact_play_pause, "setColorFilter", primaryColor)
+            setInt(com.hendo.hendomusic.R.id.notification_compact_next, "setColorFilter", primaryColor)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_compact_play_pause, playPause.actionIntent)
             setOnClickPendingIntent(com.hendo.hendomusic.R.id.notification_compact_next, next.actionIntent)
         }
+        bindArtwork(
+            views = compactViews,
+            artworkViewId = com.hendo.hendomusic.R.id.notification_compact_artwork,
+            placeholderViewId = com.hendo.hendomusic.R.id.notification_compact_artwork_placeholder,
+            artworkUri = artworkUri,
+            session = session,
+        )
         val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             // Android requires a small icon, but this transparent glyph avoids a second
             // visible app icon in the custom player card.
@@ -638,6 +691,12 @@ private class HendoNotificationProvider(private val appContext: android.content.
         appContext.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
+    fun release() {
+        artworkScope.cancel()
+        artworkRequests.clear()
+        artworkCache.evictAll()
+    }
+
     override fun handleCustomCommand(session: MediaSession, action: String, extras: android.os.Bundle): Boolean = false
 
     private companion object {
@@ -650,6 +709,64 @@ private class HendoNotificationProvider(private val appContext: android.content.
     private fun formatNotificationTime(positionMs: Long): String {
         val seconds = (positionMs.coerceAtLeast(0L) / 1_000L)
         return String.format(Locale.getDefault(), "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private fun bindArtwork(
+        views: RemoteViews,
+        artworkViewId: Int,
+        placeholderViewId: Int,
+        artworkUri: String?,
+        session: MediaSession,
+    ) {
+        val key = artworkUri?.takeIf { it.isNotBlank() }
+        val bitmap = key?.let(artworkCache::get)
+        if (bitmap != null) {
+            views.setImageViewBitmap(artworkViewId, bitmap)
+            views.setViewVisibility(artworkViewId, View.VISIBLE)
+            views.setViewVisibility(placeholderViewId, View.GONE)
+            return
+        }
+        views.setViewVisibility(artworkViewId, View.GONE)
+        views.setViewVisibility(placeholderViewId, View.VISIBLE)
+        if (key != null) requestArtwork(key, session)
+    }
+
+    private fun requestArtwork(key: String, session: MediaSession) {
+        if (!artworkRequests.add(key)) return
+        artworkScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { decodeNotificationArtwork(key) }
+            artworkRequests.remove(key)
+            if (bitmap != null) artworkCache.put(key, bitmap)
+            if (!dismissed && session.player.currentMediaItem?.mediaMetadata?.artworkUri?.toString() == key) {
+                refresh(session)
+            }
+        }
+    }
+
+    private fun decodeNotificationArtwork(value: String): Bitmap? = runCatching {
+        val uri = Uri.parse(value)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        openArtwork(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 384 || bounds.outHeight / sample > 384) sample *= 2
+        val decoded = openArtwork(uri)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            })
+        } ?: return null
+        val side = min(decoded.width, decoded.height)
+        val square = Bitmap.createBitmap(decoded, (decoded.width - side) / 2, (decoded.height - side) / 2, side, side)
+        val scaled = Bitmap.createScaledBitmap(square, 192, 192, true)
+        if (square !== decoded && square !== scaled) square.recycle()
+        if (decoded !== square && decoded !== scaled) decoded.recycle()
+        scaled
+    }.getOrNull()
+
+    private fun openArtwork(uri: Uri): InputStream? = when (uri.scheme) {
+        "file" -> uri.path?.let(::File)?.takeIf(File::exists)?.let(::FileInputStream)
+        else -> appContext.contentResolver.openInputStream(uri)
     }
 }
 

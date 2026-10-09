@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private var pendingMetadataRequest: PendingMetadata? = null
     private var pendingArtworkRequest: PendingArtwork? = null
+    private var openPlayerRequest by mutableIntStateOf(0)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         viewModel.player.connect()
+        consumeOpenPlayerIntent(intent)
         setContent {
             val ui by viewModel.uiState.collectAsStateWithLifecycle()
             DisposableEffect(ui.settings.keepScreenOn) {
@@ -100,6 +102,7 @@ class MainActivity : ComponentActivity() {
             LuminaraTheme(ui.settings.theme) {
                 LuminaraApp(
                     viewModel = viewModel,
+                    openPlayerRequest = openPlayerRequest,
                     requestMediaPermission = {
                         val permissions = buildList {
                             add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -189,6 +192,23 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeOpenPlayerIntent(intent)
+    }
+
+    private fun consumeOpenPlayerIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) {
+            intent.removeExtra(EXTRA_OPEN_PLAYER)
+            openPlayerRequest++
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_PLAYER = "com.hendo.hendomusic.extra.OPEN_PLAYER"
+    }
+
     override fun onStart() {
         super.onStart(); viewModel.player.connect()
         startService(Intent(this, com.hendo.hendomusic.playback.PlaybackService::class.java).setAction(com.hendo.hendomusic.playback.PlaybackService.ACTION_REFRESH_AMBIENT))

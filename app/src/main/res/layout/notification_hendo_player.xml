@@ -1,31 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="136dp"
-    android:background="@android:color/transparent">
+    android:background="@android:color/transparent"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <FrameLayout
+        android:layout_width="88dp"
+        android:layout_height="88dp"
+        android:layout_marginEnd="14dp"
+        android:background="@drawable/notification_artwork_background">
+
+        <ImageView
+            android:id="@+id/notification_artwork"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="앨범 커버"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/notification_artwork_placeholder"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_gravity="center"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_placeholder_music_note" />
+    </FrameLayout>
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/notification_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="marquee"
+            android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="#FFFFFFFF"
-            android:textSize="13sp"
-            android:textStyle="normal" />
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/notification_artist"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="#E6FFFFFF"
             android:textSize="11sp" />
 
         <ProgressBar
@@ -33,68 +59,59 @@
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="4dp"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="9dp"
             android:progressTint="#FFA855F7" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
+
             <TextView
                 android:id="@+id/notification_elapsed"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textColor="#E6FFFFFF"
                 android:textSize="10sp" />
+
             <TextView
                 android:id="@+id/notification_duration"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#E6FFFFFF"
                 android:textSize="10sp" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="5dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageView
                 android:id="@+id/notification_previous"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
                 android:background="@null"
                 android:contentDescription="이전 곡"
-                android:src="@drawable/ic_notification_previous"
-                android:tint="#FFFFFFFF" />
-
-            <TextView android:layout_width="10dp" android:layout_height="1dp" />
+                android:src="@drawable/ic_notification_previous" />
 
             <ImageView
                 android:id="@+id/notification_play_pause"
-                android:layout_width="30dp"
-                android:layout_height="28dp"
+                android:layout_width="28dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
                 android:background="@null"
-                android:contentDescription="재생 또는 일시정지"
-                android:tint="#FFFFFFFF" />
-
-            <TextView android:layout_width="10dp" android:layout_height="1dp" />
+                android:contentDescription="재생 또는 일시정지" />
 
             <ImageView
                 android:id="@+id/notification_next"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginStart="8dp"
                 android:background="@null"
                 android:contentDescription="다음 곡"
-                android:src="@drawable/ic_notification_next"
-                android:tint="#FFFFFFFF" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="1dp" />
+                android:src="@drawable/ic_notification_next" />
 
             <TextView
                 android:layout_width="0dp"
@@ -103,23 +120,20 @@
 
             <ImageView
                 android:id="@+id/notification_favorite"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="25dp"
+                android:layout_height="25dp"
                 android:background="@null"
                 android:contentDescription="좋아요"
-                android:src="@drawable/ic_notification_heart"
-                android:tint="#FFFFFFFF" />
-
-            <TextView android:layout_width="14dp" android:layout_height="1dp" />
+                android:src="@drawable/ic_notification_heart" />
 
             <ImageView
                 android:id="@+id/notification_close"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="25dp"
+                android:layout_height="25dp"
+                android:layout_marginStart="11dp"
                 android:background="@null"
                 android:contentDescription="재생 종료"
-                android:src="@drawable/ic_notification_close"
-                android:tint="#FFFFFFFF" />
+                android:src="@drawable/ic_notification_close" />
         </LinearLayout>
     </LinearLayout>
-</FrameLayout>
+</LinearLayout>
