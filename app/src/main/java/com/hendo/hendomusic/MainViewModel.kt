@@ -98,7 +98,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val scan = values[5] as Pair<Boolean, String?>
         val filtered = tracks.filter { KoreanSearch.matches(q, it.title, it.artist, it.album) }
         val sorted = when (settings.sort) {
-            "RECENT" -> filtered.sortedByDescending { it.dateAdded }
+            "RECENT" -> sortByDateAdded(filtered, settings.recentSortAscending)
             "PLAYED" -> filtered.sortedByDescending { it.lastPlayedAt ?: 0 }
             "COUNT" -> filtered.sortedByDescending { it.playCount }
             else -> filtered.sortedBy { it.title.lowercase() }
@@ -148,6 +148,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setCoverLyricsPreview(value: Boolean) = viewModelScope.launch { container.preferences.setCoverLyricsPreview(value) }
     fun setOpenPlayerOnPlay(value: Boolean) = viewModelScope.launch { container.preferences.setOpenPlayerOnPlay(value) }
     fun setAmbientLightEnabled(value: Boolean) = viewModelScope.launch { container.preferences.setAmbientLightEnabled(value) }
+    fun setRecentSortAscending(value: Boolean) = viewModelScope.launch { container.preferences.setRecentSortAscending(value) }
     fun setLastMainTab(value: String) = viewModelScope.launch { container.preferences.setLastMainTab(value) }
     fun setAlbumGridMode(value: Boolean) = viewModelScope.launch { container.preferences.setAlbumGridMode(value) }
     fun setAlbumGridColumns(value: Int) = viewModelScope.launch { container.preferences.setAlbumGridColumns(value) }
@@ -431,3 +432,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() { player.disconnect(); super.onCleared() }
 }
+
+internal fun sortByDateAdded(tracks: List<TrackEntity>, ascending: Boolean): List<TrackEntity> =
+    if (ascending) tracks.sortedBy { it.dateAdded } else tracks.sortedByDescending { it.dateAdded }
