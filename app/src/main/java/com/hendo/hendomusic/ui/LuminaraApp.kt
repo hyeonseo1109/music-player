@@ -122,11 +122,11 @@ fun LuminaraApp(
     }
     val startMainTab = ui.settings.lastMainTab.takeIf { it in setOf("library", "albums", "settings") } ?: "library"
     val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
-    // A library search belongs to the library visit in which it was entered. Clear it as
-    // soon as another tab or a child screen (player, queue, editor, etc.) becomes active so
-    // returning to the library always starts from the complete track list.
+    // Child destinations opened from a search (player, queue, album picker, editors, etc.)
+    // belong to the same library visit, so keep the query while those tasks are in progress.
+    // Only a deliberate switch to another top-level tab starts a fresh library visit.
     LaunchedEffect(currentRoute, ui.query) {
-        if (currentRoute != null && currentRoute != "library" && ui.query.isNotEmpty()) {
+        if (shouldClearLibrarySearch(currentRoute) && ui.query.isNotEmpty()) {
             viewModel.setQuery("")
         }
     }
@@ -552,6 +552,8 @@ private fun AlbumContentPickerScreen(ui: MainUiState, vm: MainViewModel, title: 
         }
     } }
 }
+
+internal fun shouldClearLibrarySearch(route: String?): Boolean = route == "albums" || route == "settings"
 
 @Composable private fun RowScope.NavItem(nav: NavHostController, current: String?, route: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, beforeNavigate: () -> Unit = {}) {
     NavigationBarItem(selected = current == route, onClick = { beforeNavigate(); nav.navigate(route) { launchSingleTop = true; popUpTo("library") } }, icon = { Icon(icon, null) }, label = { Text(label) })
