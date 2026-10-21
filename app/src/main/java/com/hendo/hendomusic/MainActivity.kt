@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.hendo.hendomusic.floating.FloatingLyricsService
 import com.hendo.hendomusic.data.TrackEntity
 import com.hendo.hendomusic.library.MetadataUpdate
+import com.hendo.hendomusic.library.requiresMediaWriteApproval
 import com.hendo.hendomusic.ui.LuminaraApp
 import com.hendo.hendomusic.ui.LuminaraTheme
 import kotlinx.coroutines.flow.first
@@ -159,7 +160,12 @@ class MainActivity : ComponentActivity() {
                     requestMetadataWrite = { track, update, done ->
                         if (track.mediaStoreId == null) {
                             done("이 SAF 문서 공급자는 표준 음악 태그 쓰기를 지원하지 않습니다")
-                        } else if (Build.VERSION.SDK_INT >= 30) {
+                        } else if (Build.VERSION.SDK_INT >= 30 && requiresMediaWriteApproval(
+                                Build.VERSION.SDK_INT,
+                                track.mediaStoreId,
+                                mediaOwnerPackage(track),
+                                packageName,
+                            )) {
                             pendingMetadataRequest = PendingMetadata(track, update, done)
                             runCatching {
                                 val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
@@ -175,7 +181,12 @@ class MainActivity : ComponentActivity() {
                     requestArtworkWrite = { track, apply, fail ->
                         if (track.mediaStoreId == null) {
                             fail("이 SAF 문서 공급자는 원본 앨범 커버 쓰기를 지원하지 않습니다")
-                        } else if (Build.VERSION.SDK_INT >= 30) {
+                        } else if (Build.VERSION.SDK_INT >= 30 && requiresMediaWriteApproval(
+                                Build.VERSION.SDK_INT,
+                                track.mediaStoreId,
+                                mediaOwnerPackage(track),
+                                packageName,
+                            )) {
                             pendingArtworkRequest = PendingArtwork(track, apply, fail)
                             runCatching {
                                 val request = MediaStore.createWriteRequest(contentResolver, listOf(Uri.parse(track.uri)))
@@ -203,6 +214,21 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(EXTRA_OPEN_PLAYER)
             openPlayerRequest++
         }
+    }
+
+    private fun mediaOwnerPackage(track: TrackEntity): String? {
+        if (Build.VERSION.SDK_INT < 29 || track.mediaStoreId == null) return null
+        return runCatching {
+            contentResolver.query(
+                Uri.parse(track.uri),
+                arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
     }
 
     companion object {
