@@ -100,7 +100,11 @@ fun MetadataEditorScreen(
         ListItem({ Text("취소") }, leadingContent = { Icon(Icons.Default.Close, null) }, modifier = Modifier.clickable { artworkMenu = false })
         Spacer(Modifier.height(24.dp))
     }
-    if (artworkSearch) ArtworkSearchDialog(track, viewModel, { artworkSearch = false }) { result ->
+    if (artworkSearch) ArtworkSearchDialog(
+        initialQuery = artworkSearchQuery(title, artist, album),
+        viewModel = viewModel,
+        close = { artworkSearch = false },
+    ) { result ->
         result.largeUrl?.let { url -> viewModel.prepareRemoteArtwork(url) { prepared -> prepared.onSuccess { cropSource = it; artworkSearch = false }.onFailure { message = "이미지 다운로드 실패: ${it.localizedMessage}" } } }
     }
     cropSource?.let { source -> CropArtworkDialog(source, track.id, viewModel, { cropSource = null }, {
@@ -117,9 +121,12 @@ fun MetadataEditorScreen(
     )
 }
 
-@Composable private fun ArtworkSearchDialog(track: TrackEntity, viewModel: MainViewModel, close: () -> Unit, select: (ArtworkResult) -> Unit) {
+internal fun artworkSearchQuery(title: String, artist: String, album: String): String =
+    listOf(artist, title, album).map(String::trim).filter(String::isNotBlank).joinToString(" ")
+
+@Composable private fun ArtworkSearchDialog(initialQuery: String, viewModel: MainViewModel, close: () -> Unit, select: (ArtworkResult) -> Unit) {
     val state by viewModel.artworkSearch.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf(listOf(track.artist, track.title, track.album).filter { it.isNotBlank() }.joinToString(" ")) }
+    var query by remember(initialQuery) { mutableStateOf(initialQuery) }
     var preview by remember { mutableStateOf<ArtworkResult?>(null) }
     Dialog(onDismissRequest = close) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
