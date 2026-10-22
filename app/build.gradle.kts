@@ -8,6 +8,7 @@ plugins {
 android {
     namespace = "com.hendo.hendomusic"
     compileSdk = 36
+    testBuildType = "qa"
 
     defaultConfig {
         applicationId = "com.hendo.hendomusic"
@@ -24,6 +25,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    buildTypes {
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+            matchingFallbacks += listOf("debug")
+        }
     }
     packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     compileOptions {
@@ -67,10 +76,12 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("com.mpatric:mp3agic:0.9.1")
     implementation("net.jthink:jaudiotagger:3.0.1")
+    implementation("org.mp4parser:isoparser:1.9.56")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

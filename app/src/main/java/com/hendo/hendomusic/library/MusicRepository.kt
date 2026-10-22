@@ -129,9 +129,19 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
                 return@withContext
             }
             if (track.fileName.endsWith(".m4a", ignoreCase = true) || track.fileName.endsWith(".flac", ignoreCase = true)) {
-                rewriteContainerTags(track, title, artist, album, albumArtist)
-                verifyEmbeddedMetadata(track, title, artist, album)
-                refreshSharedMediaMetadata(track, title, artist, album, albumArtist)
+                val embeddedFailure = runCatching {
+                    rewriteContainerTags(track, title, artist, album, albumArtist)
+                    verifyEmbeddedMetadata(track, title, artist, album)
+                }.exceptionOrNull()
+                if (embeddedFailure == null) {
+                    refreshSharedMediaMetadata(track, title, artist, album, albumArtist)
+                } else if (track.fileName.endsWith(".m4a", ignoreCase = true) && track.mediaStoreId != null) {
+                    rewriteFrameworkM4aTags(track, title, artist, album, albumArtist)
+                    verifyEmbeddedMetadata(track, title, artist, album)
+                    refreshSharedMediaMetadata(track, title, artist, album, albumArtist)
+                } else {
+                    throw embeddedFailure
+                }
                 dao.updateMetadata(track.id, title, artist, album, albumArtist, System.currentTimeMillis())
                 return@withContext
             }
@@ -304,6 +314,18 @@ class MusicRepository(private val context: Context, private val dao: AppDao) {
             }
         }
         context.sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.parse(track.uri)))
+    }
+
+    private fun rewriteFrameworkM4aTags(track: TrackEntity, title: String, artist: String, album: String, albumArtist: String?) {
+        val source = copyContentToTemp(track.uri, ".m4a")
+        try {
+            writeFrameworkM4aMetadata(source, title, artist, album, albumArtist)
+            context.contentResolver.openOutputStream(Uri.parse(track.uri), "wt")?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: error("이 저장소는 편집한 M4A 태그 쓰기를 지원하지 않습니다.")
+        } finally {
+            source.delete()
+        }
     }
 
     /** Prevent an app-only success state when the file did not retain a readable cover frame. */
