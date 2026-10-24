@@ -763,9 +763,13 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
     val haptics = LocalHapticFeedback.current
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .52f) else Color.Transparent).pointerInput(track.id, selected) { detectTapGestures(onTap = { play() }, onLongPress = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); select() }) }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         if (selected) Icon(Icons.Default.CheckCircle, "선택됨", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
+        if (menuOnLeft) IconButton(menu, Modifier.size(40.dp)) { Icon(Icons.Default.MoreVert, "곡 메뉴") }
         Artwork(track.displayArtworkUri().takeUnless { it.isNullOrBlank() }, 54)
-        Column(Modifier.weight(1f).padding(start = 12.dp, end = 28.dp)) { Text(track.title, maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.SemiBold); Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        IconButton(menu, if (menuOnLeft) Modifier.offset(x = (-28).dp) else Modifier) { Icon(Icons.Default.MoreVert, "곡 메뉴") }
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp)) {
+            Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (!menuOnLeft) IconButton(menu) { Icon(Icons.Default.MoreVert, "곡 메뉴") }
     }
 }
 

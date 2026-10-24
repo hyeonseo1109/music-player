@@ -28,6 +28,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -193,7 +194,7 @@ fun ReorderableQueueScreen(
                                 ) {
                                     QueueArtwork(item, tracksById[queueTrackId(item)])
                                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                        Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 1)
+                                        Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(item.mediaMetadata.artist?.toString().orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                     }
                                 }
