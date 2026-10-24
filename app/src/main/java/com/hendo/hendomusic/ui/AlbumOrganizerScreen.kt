@@ -349,23 +349,44 @@ fun AlbumOrganizerScreen(ui: MainUiState, viewModel: MainViewModel, openAlbum: (
 }
 
 @Composable private fun AlbumCard(album: UserAlbumEntity, modifier: Modifier = Modifier, dragModifier: Modifier = Modifier, viewModel: MainViewModel, open: () -> Unit, more: () -> Unit) {
-    val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     Surface(modifier.fillMaxWidth().then(dragModifier).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AlbumArtworkThumbnail(album, viewModel, Modifier.size(52.dp))
-            Column(Modifier.weight(1f).padding(start = 12.dp)) { Text(album.name, style = MaterialTheme.typography.titleMedium); Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall) }
+            AlbumTitleWithCount(album, viewModel, Modifier.weight(1f).padding(start = 12.dp), MaterialTheme.typography.titleMedium)
             IconButton(more) { Icon(Icons.Default.MoreVert, "앨범 더보기") }
         }
     }
 }
 
 @Composable private fun AlbumTile(album: UserAlbumEntity, viewModel: MainViewModel, dragModifier: Modifier = Modifier, open: () -> Unit, more: () -> Unit) {
-    val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
     Surface(Modifier.fillMaxWidth().then(dragModifier).clickable(onClick = open), shape = RoundedCornerShape(18.dp), color = androidx.compose.ui.graphics.Color.Transparent) {
         Column(Modifier.padding(6.dp)) {
             AlbumArtworkThumbnail(album, viewModel, Modifier.fillMaxWidth().padding(5.dp).aspectRatio(1f))
-            Row(verticalAlignment = Alignment.CenterVertically) { Text(album.name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.titleSmall); IconButton(more, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "앨범 더보기") } }; Text("${tracks.size}곡", style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AlbumTitleWithCount(album, viewModel, Modifier.weight(1f), MaterialTheme.typography.titleSmall)
+                IconButton(more, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "앨범 더보기") }
+            }
         }
+    }
+}
+
+@Composable
+fun AlbumTitleWithCount(
+    album: UserAlbumEntity,
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    nameStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyLarge,
+) {
+    val tracks by viewModel.observeAlbumTracks(album.id).collectAsStateWithLifecycle(emptyList())
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(album.name, Modifier.weight(1f, fill = false), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = nameStyle)
+        Text(
+            "${tracks.size}곡",
+            Modifier.padding(start = 7.dp),
+            maxLines = 1,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .76f),
+        )
     }
 }
 @Composable fun AlbumArtworkThumbnail(album: UserAlbumEntity, viewModel: MainViewModel, modifier: Modifier = Modifier) {

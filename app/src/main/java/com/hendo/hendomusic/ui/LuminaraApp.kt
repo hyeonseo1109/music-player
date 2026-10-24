@@ -253,7 +253,21 @@ fun LuminaraApp(
                     dragOffset = 0f
                 }
                 Column(Modifier.fillMaxSize()) {
-                    TopAppBar({ Text(album?.name ?: "내 앨범") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent))
+                    TopAppBar(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(album?.name ?: "내 앨범", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "${tracks.size}곡",
+                                    Modifier.padding(start = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .78f),
+                                )
+                            }
+                        },
+                        navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.Default.ArrowBack, "뒤로") } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
+                    )
                     if (selectedIds.isNotEmpty()) AlbumTrackSelectionBar(
                         count = selectedIds.size,
                         play = { localTracks.firstOrNull { it.id in selectedIds }?.let { viewModel.play(it, localTracks.filter { track -> track.id in selectedIds }); if (ui.settings.openPlayerOnPlay) nav.navigate("player") }; selectedIds = emptySet() },
@@ -378,7 +392,7 @@ fun LuminaraApp(
                                 Column(Modifier.padding(10.dp)) {
                                     AlbumArtworkThumbnail(album, viewModel, Modifier.fillMaxWidth().aspectRatio(1f))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(album.name, Modifier.weight(1f), maxLines = 1, style = MaterialTheme.typography.titleSmall)
+                                        AlbumTitleWithCount(album, viewModel, Modifier.weight(1f), MaterialTheme.typography.titleSmall)
                                         IconButton({ albumMenuTarget = AlbumMenuTarget(album.id, album.name, false) }) { Icon(Icons.Default.MoreVert, "앨범 더보기") }
                                     }
                                 }
@@ -386,7 +400,7 @@ fun LuminaraApp(
                         }
                     } else LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(localMembers, key = { it.id }) { album ->
-                            ListItem(headlineContent = { Text(album.name) }, leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(54.dp)) }, trailingContent = { IconButton({ albumMenuTarget = AlbumMenuTarget(album.id, album.name, false) }) { Icon(Icons.Default.MoreVert, "앨범 더보기") } }, modifier = Modifier.fillMaxWidth().pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragY += amount.y; folderDragTotalY += amount.y; if (!folderExitTriggered && folderDragTotalY < -with(density) { 120.dp.toPx() }) { folderExitTriggered = true; viewModel.moveAlbumToRoot(album.id); nav.popBackStack() } }, onDragCancel = { draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragY / with(density) { 72.dp.toPx() }).roundToInt()).coerceIn(localMembers.indices); if (!folderExitTriggered && from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false } ) }.clickable { nav.navigate("album/${album.id}") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+                            ListItem(headlineContent = { AlbumTitleWithCount(album, viewModel) }, leadingContent = { AlbumArtworkThumbnail(album, viewModel, Modifier.size(54.dp)) }, trailingContent = { IconButton({ albumMenuTarget = AlbumMenuTarget(album.id, album.name, false) }) { Icon(Icons.Default.MoreVert, "앨범 더보기") } }, modifier = Modifier.fillMaxWidth().pointerInput(album.id, localMembers.size) { detectDragGesturesAfterLongPress(onDragStart = { draggedAlbumId = album.id; dragY = 0f; folderDragTotalY = 0f; folderExitTriggered = false; haptics.performHapticFeedback(HapticFeedbackType.LongPress) }, onDrag = { change, amount -> change.consume(); dragY += amount.y; folderDragTotalY += amount.y; if (!folderExitTriggered && folderDragTotalY < -with(density) { 120.dp.toPx() }) { folderExitTriggered = true; viewModel.moveAlbumToRoot(album.id); nav.popBackStack() } }, onDragCancel = { draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false }, onDragEnd = { val from = localMembers.indexOfFirst { it.id == album.id }; val target = (from + (dragY / with(density) { 72.dp.toPx() }).roundToInt()).coerceIn(localMembers.indices); if (!folderExitTriggered && from >= 0 && target != from) { localMembers.add(target, localMembers.removeAt(from)); folderId?.let { viewModel.reorderAlbums(localMembers.map { item -> item.id }, it) } }; draggedAlbumId = null; folderDragTotalY = 0f; folderExitTriggered = false } ) }.clickable { nav.navigate("album/${album.id}") }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .58f))
                         }
                     }
