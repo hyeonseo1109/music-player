@@ -101,7 +101,7 @@ fun MetadataEditorScreen(
         Spacer(Modifier.height(24.dp))
     }
     if (artworkSearch) ArtworkSearchDialog(
-        initialQuery = artworkSearchQuery(title, artist, album),
+        initialQuery = artworkSearchQuery(title, artist),
         viewModel = viewModel,
         close = { artworkSearch = false },
     ) { result ->
@@ -121,8 +121,8 @@ fun MetadataEditorScreen(
     )
 }
 
-internal fun artworkSearchQuery(title: String, artist: String, album: String): String =
-    listOf(artist, title, album).map(String::trim).filter(String::isNotBlank).joinToString(" ")
+internal fun artworkSearchQuery(title: String, artist: String): String =
+    listOf(artist, title).map(String::trim).filter(String::isNotBlank).joinToString(" ")
 
 @Composable private fun ArtworkSearchDialog(initialQuery: String, viewModel: MainViewModel, close: () -> Unit, select: (ArtworkResult) -> Unit) {
     val state by viewModel.artworkSearch.collectAsStateWithLifecycle()
