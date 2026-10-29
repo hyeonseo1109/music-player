@@ -780,7 +780,7 @@ private fun sortLabel(sort: String) = when(sort) { "RECENT" -> "최근 추가"; 
         if (menuOnLeft) IconButton(menu, Modifier.size(40.dp)) { Icon(Icons.Default.MoreVert, "곡 메뉴") }
         Artwork(track.displayArtworkUri().takeUnless { it.isNullOrBlank() }, 54)
         Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp)) {
-            Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            Text(track.title, Modifier.fadeAtEnd(), maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.SemiBold)
             Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!menuOnLeft) IconButton(menu) { Icon(Icons.Default.MoreVert, "곡 메뉴") }

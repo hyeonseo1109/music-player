@@ -194,7 +194,12 @@ fun ReorderableQueueScreen(
                                 ) {
                                     QueueArtwork(item, tracksById[queueTrackId(item)])
                                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                        Text(item.mediaMetadata.title?.toString().orEmpty(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            item.mediaMetadata.title?.toString().orEmpty(),
+                                            Modifier.fadeAtEnd(),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Clip,
+                                        )
                                         Text(item.mediaMetadata.artist?.toString().orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                     }
                                 }
